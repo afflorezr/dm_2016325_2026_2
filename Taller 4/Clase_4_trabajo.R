@@ -92,4 +92,4 @@ SUBSTR(InvoiceDate,6,2) AS mes,
 ROUND(AVG(Total),2) AS ingreso_promedio
 FROM Invoice
 GROUP BY mes
-ORDER BY ingreso_promedio DESC;"HTMLS/taller_webscraping_R_p2 (1).html
+ORDER BY ingreso_promedio DESC;")
