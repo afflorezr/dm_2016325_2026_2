@@ -333,7 +333,8 @@ Cargamos el archivo `titanic.csv`, filtramos las columnas cuantitativas requerid
 
 ```{r e3_matriz_escalada, echo=TRUE}
 # 1. Carga, limpieza y construcción de X centrada y escalada
-titanic_raw <- read_csv("titanic.csv", show_col_types = FALSE)
+library(here)
+titanic_raw <- read_csv("../titanic.csv", show_col_types = FALSE)
 
 datos_cuant <- titanic_raw %>%
   select(age, fare, sibsp, parch) %>%
@@ -662,7 +663,7 @@ Cargamos el dataset, seleccionamos las variables numéricas junto con la respues
 
 ```{r e5_pca_calculo, echo=TRUE}
 # 1. Carga de datos y filtrado de registros completos
-titanic_sub <- read_csv("titanic.csv", show_col_types = FALSE) %>%
+titanic_sub <- read_csv("../titanic.csv", show_col_types = FALSE) %>%
   select(age, fare, sibsp, parch, pclass, survived) %>%
   na.omit()
 
