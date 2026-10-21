@@ -1,0 +1,378 @@
+---
+title: "Taller 1 -- Comparador de Precios"
+subtitle: "Categoría 42: Repelentes y control de insectos"
+author: "Juan Felipe Rojas Casallas"
+date: "Minería de Datos (2016325) -- 2026-2"
+output:
+  pdf_document:
+    latex_engine: pdflatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+lang: es
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 5)
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+```
+
+```{r conexion, include=FALSE}
+con <- dbConnect(SQLite(), "comparador_precios.sqlite")
+```
+
+# Introducción
+
+Para este taller hice un comparador de precios de la **categoría 42: Repelentes y control de insectos**. La idea es scrapear al menos 3 tiendas colombianas en línea y ver en cuál conviene comprar cada producto, comparando las mismas presentaciones.
+
+Al final logré identificar 9 productos que están en las 3 tiendas (más de los 8 que piden), con 28 observaciones comparables.
+
+# Fuentes y scraping
+
+## Comercios seleccionados
+
+```{r comercios}
+kable(dbGetQuery(con, "SELECT nombre AS Comercio, url_base AS URL FROM comercios"),
+      caption = "Comercios utilizados")
+```
+
+Escogí estas 3 tiendas porque las tres tienen API interna de catálogo que se puede consultar directamente con peticiones HTTP, sin necesidad de Selenium ni nada de eso. Además cubren distintos tipos de negocio: La Rebaja es droguería y las otras dos son supermercados.
+
+## Estrategia de extracción
+
+La extracción se hizo con peticiones HTTP al servicio interno de catálogo de cada tienda (paquete `httr`). Básicamente cada tienda tiene un endpoint tipo REST que devuelve los productos en JSON, paginados de a 50.
+
+- Para **La Rebaja** la categoría de repelentes era muy chiquita (pocos productos), así que me tocó complementarla con búsquedas por texto para traer más resultados.
+- Para **Éxito** usé dos categorías (repelentes + insecticidas), pero la de insecticidas venía mezclada con ambientadores y productos de aseo, así que tuve que filtrar bastante para quedarme solo con lo relevante.
+- Para **Jumbo** fue más directo, la categoría estaba bien separada.
+- Todas las respuestas JSON se guardan en `raw/` por si se necesitan después.
+
+## Fecha y hora de captura
+
+```{r fechas}
+kable(dbGetQuery(con, "
+  SELECT c.nombre AS Comercio, e.fecha_hora_inicio AS 'Fecha/Hora', e.n_registros AS Registros
+  FROM ejecuciones e JOIN comercios c ON e.comercio_id = c.comercio_id
+  WHERE e.estado = 'completa'
+  ORDER BY e.fecha_hora_inicio"),
+  caption = "Ejecuciones de recolección")
+```
+
+## Categorías consultadas por comercio
+
+| Comercio | Categoría en el sitio | Equivalencia |
+|---|---|---|
+| La Rebaja Virtual | Cuidado personal > Cuidado corporal > Repelentes | Repelentes de insectos |
+| La Rebaja Virtual | Búsqueda: "repelente", "insecticida" | Complemento |
+| Éxito | Cuidado personal > Protección solar y repelentes > Repelentes | Repelentes |
+| Éxito | Mercado > Aseo del hogar > Ambientadores e insecticidas | Insecticidas (filtrado) |
+| Jumbo Colombia | Supermercado > Belleza > Repelentes | Repelentes |
+| Jumbo Colombia | Supermercado > Aseo de hogar > Insecticidas | Insecticidas |
+
+De la categoría de Éxito "Ambientadores e insecticidas" me tocó sacar todo lo que no era de la categoría 42 (ambientadores, desinfectantes, jabones, etc.) con un filtro por palabras clave.
+
+# Preparación de los datos
+
+## Limpieza y estandarización
+
+Cada tienda escribe los datos de forma diferente, así que hubo que estandarizar varias cosas:
+
+- **Marcas**: una tienda pone "STAY OFF", otra "Stay Off" y otra "stay off". Todas se llevaron a un formato único.
+- **Unidades**: había de todo (`grs`, `gramo`, `cc`, `mililitros`). Se normalizó a `g`, `ml`, etc.
+- **Contenido**: algunas tiendas traen el contenido en campos aparte (valor numérico + unidad), otras solo lo ponen en el nombre del producto. Cuando no había datos estructurados, se extrajo del nombre con expresiones regulares.
+
+## Correspondencia de productos
+
+Revisé los datos de cada tienda y encontré 9 productos que están en las 3. La clasificación se hace por marca + palabras clave + rango de contenido, porque cada tienda le pone nombres distintos al mismo producto.
+
+```{r comparables}
+comparables <- data.frame(
+  ID = paste0("P0", 1:9),
+  Producto = c("Stay Off Spray Adulto 120ml", "Stay Off Amazonic Spray 120ml",
+    "Autan Crema Family 200g", "Autan Aerosol 177ml",
+    "Nopikex Líquido 120ml", "Nopikex Barra 50g",
+    "Bacterion Family Spray 150ml", "Stay Off Niños Spray 120ml",
+    "Bacterion Kids Crema 120g"),
+  stringsAsFactors = FALSE)
+kable(comparables, caption = "Productos comparables identificados")
+```
+
+Algunos problemas que encontré al hacer el matching:
+
+- El **Autan Aerosol 177ml** en Éxito y Jumbo dice "Spray" en vez de "Aerosol", tocó aceptar las dos palabras.
+- El **Nopikex Líquido** en La Rebaja aparece como "REPELENTE NOPIKEX" sin la palabra "líquido", entonces la regla es: si es Nopikex y NO es barra ni sólido, entonces es el líquido.
+- El **Stay Off Niños** en La Rebaja viene con un nombre raro ("FSPRAY NIÑOS") y la unidad sale como "unidad" en vez de "ml", así que tocó aceptar eso también.
+
+# Base de datos SQLite
+
+## Estructura
+
+La base `comparador_precios.sqlite` tiene 3 tablas:
+
+```{r estructura}
+for (tbl in dbListTables(con)) {
+  info <- dbGetQuery(con, sprintf("PRAGMA table_info(%s)", tbl))
+  cat("**Tabla:", tbl, "**\n\n")
+  print(kable(info[, c("name", "type", "notnull")],
+              col.names = c("Campo", "Tipo", "NOT NULL")))
+  cat("\n")
+}
+```
+
+- **comercios**: id, nombre y URL de cada tienda.
+- **ejecuciones**: cada corrida del scraper con fecha, comercio, cantidad de registros y estado.
+- **observaciones**: todos los productos con sus datos (precio, marca, contenido, URL, texto original) y los campos de comparabilidad.
+
+## Validaciones
+
+- Hay un `UNIQUE` sobre `(comercio_id, producto_id_comercio, fecha_hora_consulta)` para que no se dupliquen observaciones.
+- Los productos con precio 0 se quedan en la base pero no se usan en comparaciones.
+
+# Consultas SQL
+
+## Pregunta 1: Contenido de la base
+
+¿Cuántos comercios, productos y observaciones hay? ¿Cuántos productos aporta cada comercio?
+
+```{r q1}
+kable(dbGetQuery(con, "
+  SELECT COUNT(DISTINCT comercio_id) AS Comercios,
+         COUNT(DISTINCT producto_id_comercio || comercio_id) AS Productos,
+         COUNT(*) AS Observaciones
+  FROM observaciones"),
+  caption = "Resumen general")
+
+kable(dbGetQuery(con, "
+  SELECT c.nombre AS Comercio, COUNT(*) AS Total,
+    SUM(CASE WHEN comparable=1 THEN 1 ELSE 0 END) AS Comparables
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  GROUP BY c.nombre"),
+  caption = "Productos por comercio")
+```
+
+La Rebaja tiene menos productos porque es droguería y solo vende repelentes de uso personal. Éxito tiene muchos porque la categoría de insecticidas incluye de todo. Los 9 comparables están repartidos de forma pareja (9 por tienda).
+
+## Pregunta 2: Observaciones comparables
+
+¿Se obtuvieron al menos 24 observaciones comparables?
+
+```{r q2}
+q2 <- dbGetQuery(con, "
+  SELECT c.nombre AS Comercio, COUNT(*) AS Comparables
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  WHERE comparable=1 AND precio > 0
+  GROUP BY c.nombre")
+kable(q2, caption = "Observaciones comparables por comercio")
+```
+
+Hay `r sum(q2$Comparables)` observaciones comparables, o sea que sí se cumple el mínimo de 24. No hay duplicados del mismo producto y comercio.
+
+## Pregunta 3: Precios por presentación comparable
+
+Precio mínimo, máximo y promedio de cada producto. ¿Quién es el más barato?
+
+```{r q3}
+kable(dbGetQuery(con, "
+  SELECT nombre_estandarizado AS Producto,
+    MIN(precio) AS Mínimo, MAX(precio) AS Máximo,
+    ROUND(AVG(precio)) AS Promedio
+  FROM observaciones WHERE comparable=1 AND precio > 0
+  GROUP BY nombre_estandarizado"),
+  caption = "Estadísticas de precio por producto (COP)")
+
+kable(dbGetQuery(con, "
+  SELECT o.nombre_estandarizado AS Producto, c.nombre AS 'Comercio más barato', o.precio AS Precio
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  WHERE comparable=1 AND precio > 0
+    AND precio = (SELECT MIN(precio) FROM observaciones o2
+                  WHERE o2.nombre_estandarizado = o.nombre_estandarizado AND precio > 0)
+  ORDER BY Producto"),
+  caption = "Comercio con menor precio por producto")
+```
+
+Jumbo es el más barato en 5 productos, Éxito en 3 y La Rebaja solo en 1 (Nopikex Líquido). Básicamente en supermercados sale más barato que en droguería.
+
+## Pregunta 4: Ahorro potencial
+
+¿Cuánto se ahorra comprando en el más barato?
+
+```{r q4}
+q4 <- dbGetQuery(con, "
+  SELECT nombre_estandarizado AS Producto,
+    MAX(precio) - MIN(precio) AS 'Ahorro (COP)',
+    ROUND(100.0 * (MAX(precio) - MIN(precio)) / MAX(precio), 1) AS 'Ahorro (%)'
+  FROM observaciones WHERE comparable=1 AND precio > 0
+  GROUP BY nombre_estandarizado
+  ORDER BY 3 DESC")
+kable(q4, caption = "Ahorro al elegir el comercio más barato")
+```
+
+En Stay Off Adulto y Autan Crema el ahorro pasa del 35%, que no es poco. En Nopikex Barra y Bacterion Kids la diferencia es mínima (menos del 10%).
+
+## Pregunta 5: Precio por unidad de contenido
+
+¿Cuánto cuesta por mL o por g en cada tienda?
+
+```{r q5}
+kable(dbGetQuery(con, "
+  SELECT nombre_estandarizado AS Producto, c.nombre AS Comercio,
+    precio AS Precio, contenido_valor AS Contenido, contenido_unidad AS Unidad,
+    ROUND(precio / NULLIF(contenido_valor, 0), 1) AS 'COP/Unidad'
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  WHERE comparable=1 AND precio > 0 AND contenido_valor > 0
+    AND contenido_unidad != 'unidad'
+  ORDER BY contenido_unidad, nombre_estandarizado, 6"),
+  caption = "Precio por unidad de contenido")
+```
+
+Los sprays son más caros por mL que las cremas, lo cual tiene sentido porque el formato aerosol es más caro de producir. El más económico por mL en general es Jumbo.
+
+## Pregunta 6: Mayores diferencias de precio
+
+¿En cuáles productos hay más diferencia entre tiendas?
+
+```{r q6}
+kable(dbGetQuery(con, "
+  SELECT nombre_estandarizado AS Producto,
+    MAX(precio) - MIN(precio) AS 'Diferencia (COP)',
+    ROUND(100.0 * (MAX(precio)-MIN(precio)) / MAX(precio), 1) AS 'Diferencia (%)'
+  FROM observaciones WHERE comparable=1 AND precio > 0
+  GROUP BY nombre_estandarizado ORDER BY 3 DESC"),
+  caption = "Diferencias de precio entre comercios")
+```
+
+Stay Off Adulto es donde más varía el precio entre tiendas. Los Nopikex y Bacterion Kids casi que cuestan lo mismo en las tres.
+
+## Pregunta 7: Datos faltantes
+
+¿Hay datos que falten o estén inconsistentes?
+
+```{r q7}
+kable(dbGetQuery(con, "
+  SELECT
+    SUM(CASE WHEN precio IS NULL OR precio=0 THEN 1 ELSE 0 END) AS 'Sin precio',
+    SUM(CASE WHEN marca IS NULL OR marca='' THEN 1 ELSE 0 END) AS 'Sin marca',
+    SUM(CASE WHEN contenido_valor IS NULL THEN 1 ELSE 0 END) AS 'Sin contenido',
+    COUNT(*) AS Total
+  FROM observaciones"),
+  caption = "Datos faltantes")
+```
+
+Los que tienen precio 0 son productos de Éxito que aparecen en el catálogo pero no están disponibles para compra. Se excluyen de las comparaciones. Los que no tienen contenido son sobre todo insecticidas de hogar donde la API no trae esa info.
+
+## Pregunta 8: Tamaño de la oferta
+
+¿Cuántos productos tiene cada tienda y qué tan completos están los datos?
+
+```{r q8}
+kable(dbGetQuery(con, "
+  SELECT c.nombre AS Comercio, COUNT(*) AS Total,
+    SUM(CASE WHEN precio > 0 THEN 1 ELSE 0 END) AS Disponibles,
+    ROUND(100.0*SUM(CASE WHEN marca IS NOT NULL AND marca != '' THEN 1 ELSE 0 END)/COUNT(*),1) AS '% con marca',
+    ROUND(100.0*SUM(CASE WHEN contenido_valor IS NOT NULL THEN 1 ELSE 0 END)/COUNT(*),1) AS '% con contenido'
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  GROUP BY c.nombre ORDER BY Total DESC"),
+  caption = "Oferta por comercio")
+```
+
+Éxito tiene la oferta más grande pero con mucha variedad (incluye insecticidas de hogar). La Rebaja tiene pocos productos pero todos son repelentes personales. Jumbo queda en la mitad.
+
+# Visualizaciones
+
+## Comparación de precios por producto y comercio
+
+```{r graf1, fig.cap="Precios de los 9 productos comparables en cada comercio"}
+colores <- c("Exito" = "#FDDA24", "Jumbo Colombia" = "#E31937", "La Rebaja Virtual" = "#00A651")
+
+viz <- dbGetQuery(con, "
+  SELECT nombre_estandarizado AS producto, c.nombre AS comercio, precio
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  WHERE comparable=1 AND precio > 0")
+
+ggplot(viz, aes(x = reorder(producto, precio), y = precio, fill = comercio)) +
+  geom_col(position = "dodge", width = 0.7) + coord_flip() +
+  scale_y_continuous(labels = function(x) paste0("$", format(x, big.mark = ","))) +
+  scale_fill_manual(values = colores) +
+  labs(title = "Precios por producto y comercio", x = NULL, y = "Precio (COP)", fill = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+Acá se ve claro que La Rebaja (verde) casi siempre tiene el precio más alto, y Jumbo (rojo) y Éxito (amarillo) pelean por el más bajo.
+
+## Ahorro porcentual
+
+```{r graf2, fig.cap="Porcentaje de ahorro al comprar en el más barato"}
+ggplot(q4, aes(x = reorder(Producto, `Ahorro (%)`), y = `Ahorro (%)`)) +
+  geom_col(fill = "#2E86AB", width = 0.7) +
+  geom_text(aes(label = paste0(`Ahorro (%)`, "%")), hjust = -0.1, size = 3.5) +
+  coord_flip() +
+  labs(title = "Ahorro al elegir el comercio más barato", x = NULL, y = "Ahorro (%)") +
+  theme_minimal() + expand_limits(y = max(q4$`Ahorro (%)`) * 1.15)
+```
+
+En Stay Off Adulto y Autan Crema vale la pena comparar porque la diferencia es más del 35%. En Nopikex Barra o Bacterion Kids da casi lo mismo dónde se compre.
+
+## Precio por mililitro
+
+```{r graf3, fig.cap="Comparación de costo por mL entre comercios"}
+ppu <- dbGetQuery(con, "
+  SELECT nombre_estandarizado AS producto, c.nombre AS comercio,
+    ROUND(precio / NULLIF(contenido_valor,0), 1) AS cop_ml, contenido_unidad
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  WHERE comparable=1 AND precio > 0 AND contenido_valor > 0 AND contenido_unidad='ml'")
+
+ggplot(ppu, aes(x = reorder(producto, cop_ml), y = cop_ml, fill = comercio)) +
+  geom_col(position = "dodge", width = 0.7) + coord_flip() +
+  scale_fill_manual(values = colores) +
+  labs(title = "Precio por mililitro", x = NULL, y = "COP/mL", fill = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+Comprando por mL los sprays salen más caros que las cremas o líquidos. Tiene sentido porque el envase aerosol cuesta más.
+
+## Marcas por comercio
+
+```{r graf4, fig.cap="Cantidad de productos por marca en cada comercio"}
+marcas <- dbGetQuery(con, "
+  SELECT c.nombre AS comercio,
+    CASE WHEN marca_estandarizada IN ('Stay Off','Autan','Nopikex','Bacterion','Raid','Baygon','Off!')
+         THEN marca_estandarizada ELSE 'Otras' END AS marca,
+    COUNT(*) AS n
+  FROM observaciones o JOIN comercios c ON o.comercio_id = c.comercio_id
+  GROUP BY comercio, marca")
+
+ggplot(marcas, aes(x = comercio, y = n, fill = marca)) +
+  geom_col(position = "stack") +
+  labs(title = "Marcas por comercio", x = NULL, y = "Productos", fill = "Marca") +
+  theme_minimal()
+```
+
+Éxito tiene un montón de marcas porque vende insecticidas de hogar (Raid, Baygon, etc.) que La Rebaja no maneja. La Rebaja solo tiene las marcas de repelentes personales.
+
+# Limitaciones y conclusiones
+
+## Limitaciones
+
+- Los precios son del momento en que se corrió el scraper, pueden cambiar en cualquier momento.
+- Algunos productos de Éxito salían con precio $0 (agotados), esos no se incluyeron en la comparación.
+- La categoría de Éxito mezcla insecticidas con ambientadores; el filtro que hice puede haber dejado pasar algún producto que no debería o haber excluido alguno que sí era relevante.
+- Solo se hizo una ejecución, lo ideal sería correrlo varias veces para ver si los precios cambian.
+
+## Conclusiones
+
+En resumen:
+
+- **Jumbo y Éxito** son más baratos en casi todos los repelentes. El ahorro frente a La Rebaja llega hasta un 37% en algunos productos (Stay Off Adulto, Autan Crema).
+- **La Rebaja** solo conviene para el Nopikex Líquido 120ml, que es más barato ahí.
+- Donde más vale la pena comparar precios es en los **Stay Off** y los **Autan**, que son los que más varían entre tiendas.
+- Para **Nopikex Barra** y **Bacterion Kids** da casi igual dónde se compre, la diferencia es poca.
+- Las cremas rinden más por mL que los sprays, algo a tener en cuenta si el formato no importa.
+
+```{r cerrar, include=FALSE}
+dbDisconnect(con)
+```
