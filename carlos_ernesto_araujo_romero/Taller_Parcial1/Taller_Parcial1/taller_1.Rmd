@@ -1,377 +1,1066 @@
 ---
-title: "Comparador de Precios en Línea: Confitería"
-subtitle: "Taller Parcial — Minería de Datos"
-author: "Carlos Araújo"
-date: "`r Sys.Date()`"
+title: "¿Dónde conviene comprar confitería?"
+subtitle: "Comparador de precios en Éxito, Carulla y Jumbo"
+author: "Carlos Ernesto Araujo Romero · Universidad Nacional de Colombia"
+date: "05/11/2026"
 output:
   html_document:
-    theme: flatly
-    toc: true
-    toc_float: true
-    code_folding: show
+    theme: cosmo
+    css: styles.css
+    toc: false
+    code_folding: none
+    df_print: paged
+    fig_caption: true
+    mathjax: null
+    self_contained: true
+params:
+  id_ejecucion: "auto"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = "center")
+knitr::opts_chunk$set(
+  echo = FALSE, warning = FALSE, message = FALSE,
+  fig.align = "center", fig.width = 10, fig.height = 6, dpi = 150
+)
 
-library(DBI)
-library(RSQLite)
-library(dplyr)
-library(stringr)
-library(tidyr)
-library(highcharter)
-library(knitr)
-library(scales)
-```
+suppressPackageStartupMessages({
+  library(DBI)
+  library(RSQLite)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(scales)
+  library(knitr)
+  library(stringr)
+  library(readr)
+  library(tibble)
+})
 
-## 1. Introducción y Delimitación
+RUTA_DB <- "comparador_precios.sqlite"
+stopifnot(file.exists(RUTA_DB))
 
-Este proyecto compara los precios del catálogo de **Confitería** en tres comercios con venta en línea en Colombia: **Éxito**, **Carulla** y **Tiendas Jumbo**.
+source("scraper.R")
 
-* **Productos incluidos:** Golosinas comerciales empacadas (chocolates de mesa e impulso, caramelos, gomitas, mentas y chicles).
-* **Productos excluidos:** Suplementos dietarios o vitamínicos en gomitas, pastillas medicinales o anestésicas para la garganta y confitería a granel sin empaque industrial.
+con <- dbConnect(SQLite(), RUTA_DB)
 
-## 2. Fuentes y Módulo de Scraping
-
-La recolección se implementó en `scraper.R` mediante Brave Browser con `rvest::read_html_live()` y `chromote`. Las respuestas crudas se almacenan en `raw/{comercio}/{fecha}/` para permitir la reproducción sin conexión.
-
-```{r modulo_scraping}
-if (file.exists("scraper.R")) {
-  tryCatch(source("scraper.R"), error = function(e) NULL)
+# ---------------------------------------------------------------------------
+# Utilidades de formato
+# ---------------------------------------------------------------------------
+fmt_cop <- function(x) {
+  ifelse(is.na(x), "—", paste0("$", format(round(x), big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE)))
 }
-
-if (exists("ejecutar_recoleccion_completa")) {
-  try(ejecutar_recoleccion_completa(offline = TRUE, ruta_db = "comparador_precios.sqlite"), silent = TRUE)
+fmt_num <- function(x, d = 0) {
+  ifelse(is.na(x), "—", format(round(x, d), nsmall = d, big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE))
 }
-
-stopifnot(file.exists("comparador_precios.sqlite"))
-```
-
-## 3. Base de Datos SQLite
-
-Los datos se estructuran en `comparador_precios.sqlite` en dos tablas: `ejecuciones` (registro de auditoría de cada corrida) y `observaciones` (precios observados con restricción `UNIQUE(comercio, sku_comercio, fecha_consulta)`).
-
-```{r conexion_sqlite}
-con <- dbConnect(SQLite(), "comparador_precios.sqlite")
-```
-
-## 4. Consultas SQL
-
-### Consulta 1: Conteos Generales y por Comercio
-
-```{r q1}
-q1_general <- dbGetQuery(con, "
-  SELECT 
-    COUNT(DISTINCT comercio) AS comercios,
-    COUNT(DISTINCT texto_original) AS presentaciones_unicas,
-    COUNT(DISTINCT id_producto_comun) AS productos_comparables,
-    COUNT(*) AS total_observaciones
-  FROM observaciones;
-")
-kable(q1_general, caption = "Resumen General")
-
-q1_comercios <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    COUNT(*) AS catalogo_total,
-    SUM(es_comparable) AS comparables
-  FROM observaciones
-  GROUP BY comercio
-  ORDER BY catalogo_total DESC;
-")
-kable(q1_comercios, caption = "Aporte por Comercio")
-```
-
-*Interpretación:* La base cuenta con 61 observaciones en 3 comercios. Jumbo aporta 29 registros, mientras Éxito y Carulla aportan 16 cada uno.
-
-### Consulta 2: Validación de Cobertura y Unicidad
-
-```{r q2}
-q2_val <- dbGetQuery(con, "
-  SELECT 
-    id_ejecucion,
-    SUM(es_comparable) AS total_comparables,
-    COUNT(DISTINCT id_producto_comun) AS productos_distintos
-  FROM observaciones
-  GROUP BY id_ejecucion;
-")
-kable(q2_val, caption = "Cobertura de la Canasta (Meta >= 24)")
-
-q2_dup <- dbGetQuery(con, "
-  SELECT comercio, sku_comercio, COUNT(*) AS repeticiones
-  FROM observaciones
-  GROUP BY comercio, sku_comercio
-  HAVING COUNT(*) > 1;
-")
-cat("Duplicados encontrados:", nrow(q2_dup), "\n")
-```
-
-*Interpretación:* Se cumple la meta obligatoria con 24 observaciones comparables exactas ($8 \text{ productos} \times 3 \text{ comercios}$) sin duplicados.
-
-### Consulta 3: Dispersión de Precios y Comercio más Barato
-
-```{r q3}
-q3 <- dbGetQuery(con, "
-  WITH stats AS (
-    SELECT 
-      id_producto_comun,
-      MIN(precio_cop) AS precio_min,
-      MAX(precio_cop) AS precio_max,
-      ROUND(AVG(precio_cop), 2) AS precio_prom
-    FROM observaciones
-    WHERE es_comparable = 1
-    GROUP BY id_producto_comun
+fmt_pct <- function(x, d = 1) {
+  ifelse(is.na(x), "—", paste0(format(round(x, d), nsmall = d, decimal.mark = ",", scientific = FALSE, trim = TRUE), "%"))
+}
+fmt_tabla <- function(df) {
+  df %>%
+    mutate(across(where(is.numeric), ~ format(.x, big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE)))
+}
+colores_tiendas <- c("Éxito" = "#F2B705", "Carulla" = "#2E7D32", "Jumbo" = "#1565C0")
+colores_subcategoria <- c(
+  "Chocolates" = "#6D4C41",
+  "Gomitas y masmelos" = "#D81B60",
+  "Mentas" = "#00897B",
+  "Caramelos" = "#F57C00"
+)
+tema_informe <- theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14.5, colour = "#3E2723"),
+    plot.subtitle = element_text(colour = "#6D4C41", size = 9.5),
+    plot.caption = element_text(colour = "#8D6E63", size = 8),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(colour = "#F0E4DA", linewidth = 0.4),
+    axis.title = element_text(colour = "#5D4037", size = 9.5),
+    axis.text = element_text(colour = "#4E342E", size = 9),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8.5),
+    plot.background = element_rect(fill = "white", colour = NA),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.margin = margin(10, 15, 10, 10)
   )
-  SELECT 
-    s.id_producto_comun,
-    s.precio_min,
-    s.precio_max,
-    s.precio_prom,
-    o.comercio AS comercio_mas_barato
-  FROM stats s
-  JOIN observaciones o 
-    ON s.id_producto_comun = o.id_producto_comun 
-   AND s.precio_min = o.precio_cop
-  WHERE o.es_comparable = 1
-  GROUP BY s.id_producto_comun, o.comercio
-  ORDER BY s.id_producto_comun;
-")
-kable(q3, caption = "Precios Extremos y Comercio Ganador (con Empates)")
+
+# ---------------------------------------------------------------------------
+# Selección de la ejecución de análisis
+# ---------------------------------------------------------------------------
+ejecuciones <- dbGetQuery(con, "SELECT * FROM ejecuciones ORDER BY fecha_inicio")
+ejecuciones_completas <- ejecuciones %>%
+  filter(estado == "completa", n_productos_comparables >= 8) %>%
+  arrange(desc(fecha_inicio))
+
+if (nrow(ejecuciones_completas) == 0) {
+  stop("No hay una ejecución completa con al menos 8 productos comparables. ",
+       "Ejecute primero source('scraper.R') y ejecutar_recoleccion().")
+}
+
+if (identical(params$id_ejecucion, "auto")) {
+  id_ejecucion <- ejecuciones_completas$id_ejecucion[1]
+} else {
+  id_ejecucion <- params$id_ejecucion
+}
+
+fila_ejecucion <- ejecuciones %>% filter(id_ejecucion == !!id_ejecucion)
+if (nrow(fila_ejecucion) == 0) stop("La ejecución indicada no existe: ", id_ejecucion)
+
+otras <- ejecuciones_completas$id_ejecucion[ejecuciones_completas$id_ejecucion != id_ejecucion]
+id_ejecucion_anterior <- if (length(otras) > 0) otras[1] else NA_character_
+
+message("Ejecución de análisis: ", id_ejecucion)
+message("Ejecución anterior para comparar: ", id_ejecucion_anterior)
+
+# ---------------------------------------------------------------------------
+# Datos de trabajo
+# ---------------------------------------------------------------------------
+obs <- dbGetQuery(con, "SELECT * FROM v_observaciones WHERE id_ejecucion = ?",
+                  params = list(id_ejecucion))
+comp <- obs %>% filter(es_comparable == 1, disponible == 1)
+productos <- dbGetQuery(con, "SELECT * FROM productos_comparables ORDER BY id_producto_comun")
+cobertura <- verificar_cobertura(con, id_ejecucion)
+
+resumen_producto <- comp %>%
+  group_by(id_producto_comun, nombre_canonico, subcategoria) %>%
+  summarise(
+    precio_min = min(precio_cop),
+    precio_max = max(precio_cop),
+    precio_prom = mean(precio_cop),
+    ahorro_cop = precio_max - precio_min,
+    ahorro_pct = 100 * (precio_max - precio_min) / precio_max,
+    mas_barato = paste(sort(unique(comercio[precio_cop == precio_min])), collapse = " y "),
+    mas_caro   = paste(sort(unique(comercio[precio_cop == precio_max])), collapse = " y "),
+    n_comercios = n_distinct(comercio),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(ahorro_pct))
+
+cesta <- comp %>%
+  group_by(comercio) %>%
+  summarise(total = sum(precio_cop), n_productos = n_distinct(id_producto_comun), .groups = "drop") %>%
+  arrange(total)
+
+cesta_mixta <- sum(resumen_producto$precio_min)
+cesta_max <- max(cesta$total)
+ahorro_mixto_cop <- cesta_max - cesta_mixta
+ahorro_mixto_pct <- 100 * ahorro_mixto_cop / cesta_max
+
+ganadoras <- resumen_producto %>%
+  separate_rows(mas_barato, sep = " y ") %>%
+  count(mas_barato, sort = TRUE, name = "victorias")
+
+n_empates <- sum(str_detect(resumen_producto$mas_barato, " y "))
+prod_mayor <- resumen_producto %>% slice_max(ahorro_pct, n = 1, with_ties = FALSE)
+prod_menor <- resumen_producto %>% slice_min(ahorro_pct, n = 1, with_ties = FALSE)
+
+# ---------------------------------------------------------------------------
+# Correspondencia y promociones
+# ---------------------------------------------------------------------------
+mapa <- dbGetQuery(con, "
+  SELECT p.id_producto_comun, p.nombre_canonico, p.marca, p.variante,
+         p.contenido_valor, p.contenido_unidad, p.subcategoria,
+         m.id_comercio, m.sku_comercio, m.nombre_comercio, m.regla, m.confianza
+    FROM productos_comparables p
+    JOIN mapeo_productos m ON m.id_producto_comun = p.id_producto_comun
+   ORDER BY p.id_producto_comun, m.id_comercio")
+
+mapa_ancho <- mapa %>%
+  select(nombre_canonico, id_comercio, nombre_comercio) %>%
+  pivot_wider(names_from = id_comercio, values_from = nombre_comercio) %>%
+  rename(Producto = nombre_canonico, `Éxito` = exito, `Carulla` = carulla, `Jumbo` = jumbo) %>%
+  select(Producto, `Éxito`, `Carulla`, `Jumbo`) %>%
+  arrange(Producto)
+
+promos <- comp %>%
+  filter(es_promocion == 1) %>%
+  arrange(desc(descuento_pct)) %>%
+  transmute(
+    Producto = nombre_canonico,
+    Comercio = comercio,
+    `Precio de venta` = fmt_cop(precio_cop),
+    `Precio de lista` = fmt_cop(precio_lista_cop),
+    `Descuento` = fmt_pct(descuento_pct)
+  )
+
+q5_corona_200_exito <- fmt_cop(
+  comp %>%
+    filter(id_producto_comun == "CONF_01_CORONA_TRAD_200G", comercio == "Éxito") %>%
+    summarise(x = first(precio_cop) / first(contenido_valor) * 100) %>%
+    pull(x)
+)
+
+# ---------------------------------------------------------------------------
+# Conteos de categoría y exclusiones
+# ---------------------------------------------------------------------------
+conteos_comercio <- dbGetQuery(con, "
+  SELECT c.nombre AS comercio, ec.n_paginas, ec.n_reportado_sitio,
+         ec.n_extraido, ec.n_incluido, ec.n_excluido, ec.n_con_precio, ec.estado
+    FROM ejecuciones_comercio ec
+    JOIN comercios c ON c.id_comercio = ec.id_comercio
+   WHERE ec.id_ejecucion = ?
+   ORDER BY c.nombre", params = list(id_ejecucion))
+
+conteos_rama <- dbGetQuery(con, "
+  SELECT c.nombre AS comercio, ec.rama, ec.n_reportado, ec.n_extraido,
+         ec.n_incluido, ec.n_excluido, ec.n_paginas
+    FROM ejecuciones_categoria ec
+    JOIN comercios c ON c.id_comercio = ec.id_comercio
+   WHERE ec.id_ejecucion = ?
+   ORDER BY c.nombre, ec.rama", params = list(id_ejecucion))
+
+exclusiones <- dbGetQuery(con, "
+  SELECT c.nombre AS comercio, d.motivo, COUNT(*) AS n
+    FROM descartes d
+    LEFT JOIN comercios c ON c.id_comercio = d.id_comercio
+   WHERE d.id_ejecucion = ?
+   GROUP BY c.nombre, d.motivo
+   ORDER BY c.nombre, n DESC", params = list(id_ejecucion))
+
+exclusiones_ejemplos <- dbGetQuery(con, "
+  SELECT c.nombre AS comercio, d.motivo, d.texto_original
+    FROM descartes d
+    LEFT JOIN comercios c ON c.id_comercio = d.id_comercio
+   WHERE d.id_ejecucion = ?
+     AND d.motivo IN ('suplemento', 'medicinal_garganta', 'no_es_chocolate', 'no_confiteria')
+   ORDER BY c.nombre, d.motivo", params = list(id_ejecucion)) %>%
+  group_by(comercio, motivo) %>%
+  slice_head(n = 2) %>%
+  ungroup()
+
+# ---------------------------------------------------------------------------
+# Tabla de la canasta para el consumidor
+# ---------------------------------------------------------------------------
+tabla_consumidor <- resumen_producto %>%
+  transmute(
+    Producto = nombre_canonico,
+    Subcategoría = subcategoria,
+    `Más barato en` = mas_barato,
+    `Precio más bajo` = fmt_cop(precio_min),
+    `Precio más alto` = fmt_cop(precio_max),
+    `Ahorro` = paste0(fmt_cop(ahorro_cop), " (", fmt_pct(ahorro_pct), ")")
+  )
+
+tabla_cesta <- cesta %>%
+  transmute(
+    Comercio = comercio,
+    `Productos con precio` = n_productos,
+    `Costo de la canasta` = fmt_cop(total)
+  )
+
+tabla_cobertura <- cobertura %>%
+  transmute(
+    Producto = nombre_canonico,
+    Subcategoría = subcategoria,
+    Éxito = fmt_cop(exito),
+    Carulla = fmt_cop(carulla),
+    Jumbo = fmt_cop(jumbo),
+    `Comercios` = n_comercios
+  )
+
+# ---------------------------------------------------------------------------
+# Datos de apoyo para las visualizaciones de la presentación
+# ---------------------------------------------------------------------------
+prod_mayor_abs <- resumen_producto %>%
+  slice_max(ahorro_cop, n = 1, with_ties = FALSE)
+
+faltantes_comercio <- obs %>%
+  group_by(comercio) %>%
+  summarise(
+    total = n(),
+    sin_precio = sum(is.na(precio_cop)),
+    sin_contenido = sum(is.na(contenido_valor)),
+    .groups = "drop"
+  )
+
+disponibilidad <- conteos_comercio %>%
+  transmute(
+    Comercio = comercio,
+    `Con precio` = n_con_precio,
+    `Sin precio` = n_incluido - n_con_precio
+  ) %>%
+  pivot_longer(-Comercio, names_to = "Estado", values_to = "N") %>%
+  group_by(Comercio) %>%
+  mutate(pct = 100 * N / sum(N)) %>%
+  ungroup() %>%
+  mutate(
+    Comercio = factor(Comercio, levels = c("Jumbo", "Carulla", "Éxito")),
+    Estado = factor(Estado, levels = c("Con precio", "Sin precio"))
+  )
+
+excl_totales <- exclusiones %>%
+  group_by(motivo) %>%
+  summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(n))
+excl_total <- sum(excl_totales$n)
+excl_cafe <- sum(excl_totales$n[excl_totales$motivo == "otra_categoria"])
+excl_no_choco <- sum(excl_totales$n[excl_totales$motivo == "no_es_chocolate"])
+excl_fiesta <- sum(excl_totales$n[excl_totales$motivo == "no_confiteria"])
+excl_halls <- sum(excl_totales$n[excl_totales$motivo == "medicinal_garganta"])
+excl_sup <- sum(excl_totales$n[excl_totales$motivo == "suplemento"])
+excl_bebida <- sum(excl_totales$n[excl_totales$motivo == "bebida_o_polvo"])
+
+podio_texto <- paste0(ganadoras$mas_barato, " (", ganadoras$victorias, ")", collapse = " · ")
+n_extraido_total <- sum(conteos_comercio$n_extraido, na.rm = TRUE)
+n_incluido_total <- sum(conteos_comercio$n_incluido, na.rm = TRUE)
+n_con_precio_total <- sum(conteos_comercio$n_con_precio, na.rm = TRUE)
 ```
 
-*Interpretación:* Éxito ofrece el menor precio en golosinas individuales. En Chocobreak 250g se presenta un empate exacto entre Éxito y Carulla a $15,700 COP.
 
-### Consulta 4: Ahorro en COP y Porcentual
+<div class="hero">
+<div class="kicker">Taller Parcial 1 · Minería de Datos · Universidad Nacional de Colombia</div>
+<h1>¿Dónde conviene comprar confitería?</h1>
+<p class="hero-sub">Comparador de precios en Éxito, Carulla y Jumbo</p>
+<p class="hero-meta">Carlos Ernesto Araujo Romero · Precios capturados el 05/11/2026, 22:29–22:37 (hora Colombia)</p>
+<p class="hero-tagline">La respuesta corta: no hay una sola tienda ganadora. Te mostramos qué comprar en cada una, cuánto puedes ahorrar y cuándo la presentación grande sí vale la pena.</p>
+<div class="kpi-grid">
+<div class="kpi"><div class="value">`r nrow(resumen_producto)`</div><div class="label">presentaciones comparadas</div></div>
+<div class="kpi"><div class="value">3</div><div class="label">comercios</div></div>
+<div class="kpi"><div class="value">`r nrow(comp)`</div><div class="label">precios comparables</div></div>
+<div class="kpi"><div class="value">`r fmt_pct(max(resumen_producto$ahorro_pct))`</div><div class="label">ahorro máximo</div></div>
+</div>
+</div>
 
-```{r q4}
-q4 <- dbGetQuery(con, "
-  SELECT 
-    id_producto_comun,
-    MIN(precio_cop) AS precio_min,
-    MAX(precio_cop) AS precio_max,
-    ROUND(MAX(precio_cop) - MIN(precio_cop), 0) AS ahorro_cop,
-    ROUND(100.0 * (MAX(precio_cop) - MIN(precio_cop)) / MAX(precio_cop), 1) AS ahorro_pct
-  FROM observaciones
-  WHERE es_comparable = 1
-  GROUP BY id_producto_comun
-  HAVING COUNT(DISTINCT comercio) > 1
-  ORDER BY ahorro_pct DESC;
-")
-kable(q4, caption = "Ahorro Potencial por Presentación")
-```
+<div class="callout callout-warning">
+<strong>La idea en una frase.</strong> No hay un solo almacén que sea el más barato para toda la confitería. La diferencia cambia producto por producto; conviene revisar la tabla antes de decidir y separar el ahorro por unidad del desembolso total.
+</div>
 
-*Interpretación:* M&M con Maní y Chocobreak 150g presentan ahorros relativos superiores al 19% al seleccionar la tienda más económica.
+## Lo que encontramos
 
-### Consulta 5: Eficiencia Unitaria (Menor Precio por Gramo)
+<div class="cards-3">
+<div class="finding">
+<div class="finding-icon">🏆</div>
+<h3>El podio se reparte</h3>
+<p><strong>`r podio_texto`</strong>. Ningún comercio gana en todo; la mejor decisión depende del producto y de la presentación.</p>
+</div>
+<div class="finding">
+<div class="finding-icon">🧺</div>
+<h3>La canasta completa</h3>
+<p>Comprar las `r nrow(resumen_producto)` presentaciones en un solo lugar cuesta entre <strong>`r fmt_cop(min(cesta$total))`</strong> y <strong>`r fmt_cop(max(cesta$total))`</strong>. La opción más barata es <strong>`r cesta$comercio[1]`</strong>.</p>
+</div>
+<div class="finding">
+<div class="finding-icon">📦</div>
+<h3>Grande no siempre es mejor</h3>
+<p>En Corona, la barra de 200 g de Éxito es más eficiente por 100 g que la de 450 g. En Millows, la de 300 g sí gana en los tres comercios.</p>
+</div>
+</div>
 
-```{r q5}
-q5 <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    texto_original AS presentacion,
-    precio_cop,
-    contenido_valor AS gramos,
-    precio_por_unidad AS cop_por_gramo
-  FROM observaciones
-  WHERE es_comparable = 1
-  ORDER BY cop_por_gramo ASC
-  LIMIT 5;
-")
-kable(q5, caption = "Top 5 Presentaciones con Menor Precio por Gramo")
-```
+## La guía de compra
 
-*Interpretación:* Los empaques grandes de Chocolate Corona (450g) en Jumbo ofrecen el costo más eficiente por gramo ($34.67 COP/g).
+Esta es la tabla que responde la pregunta central: **¿dónde comprar cada producto?** Está ordenada de mayor a menor ahorro potencial. La columna “Más barato en” ya tiene en cuenta los empates.
 
-### Consulta 6: Ranking de Brechas de Precio
-
-```{r q6}
-q6 <- dbGetQuery(con, "
-  SELECT 
-    id_producto_comun,
-    MIN(precio_cop) AS precio_minimo,
-    MAX(precio_cop) AS precio_maximo,
-    ROUND(100.0 * (MAX(precio_cop) - MIN(precio_cop)) / MAX(precio_cop), 1) AS brecha_porcentual
-  FROM observaciones
-  WHERE es_comparable = 1
-  GROUP BY id_producto_comun
-  ORDER BY brecha_porcentual DESC;
-")
-kable(q6, caption = "Ranking de Dispersión Porcentual")
-```
-
-### Consulta 7: Auditoría de Datos Faltantes
-
-```{r q7}
-q7 <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    COUNT(*) AS total_registros,
-    SUM(CASE WHEN precio_cop IS NULL OR precio_cop <= 0 THEN 1 ELSE 0 END) AS nulos_precio,
-    SUM(CASE WHEN contenido_valor IS NULL THEN 1 ELSE 0 END) AS nulos_contenido,
-    SUM(CASE WHEN url_producto IS NULL THEN 1 ELSE 0 END) AS nulos_url
-  FROM observaciones
-  GROUP BY comercio;
-")
-kable(q7, caption = "Integridad de Atributos")
-```
-
-*Interpretación:* Cero valores nulos en precios, enlaces o gramajes en los tres comercios.
-
-### Consulta 8: Calidad de Atributos por Comercio
-
-```{r q8}
-q8 <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    COUNT(*) AS total_obtenido,
-    ROUND(100.0 * SUM(CASE WHEN texto_original IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_nombre,
-    ROUND(100.0 * SUM(CASE WHEN contenido_valor > 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_gramaje,
-    ROUND(100.0 * SUM(es_comparable) / COUNT(*), 1) AS pct_canasta_comparable
-  FROM observaciones
-  GROUP BY comercio;
-")
-kable(q8, caption = "Cobertura de Atributos")
-```
-
-```{r desconexion_sqlite, include=FALSE}
-dbDisconnect(con)
-```
-
-## 5. Visualizaciones Interactivas
-
-```{r datos_graficos, include=FALSE}
-con <- dbConnect(SQLite(), "comparador_precios.sqlite")
-df_obs <- dbGetQuery(con, "SELECT * FROM observaciones WHERE es_comparable = 1;")
-dbDisconnect(con)
-
-colores_tiendas <- c("Carulla" = "#27AE60", "Éxito" = "#F1C40F", "Jumbo" = "#2980B9")
-
-nombres_canasta <- c(
-  "CONF_01_KINDER_LECHE_100G"    = "Kinder Chocolate 100g",
-  "CONF_02_MYM_LECHE_48G"        = "M&M con Leche 48g",
-  "CONF_03_MYM_MANI_49G"         = "M&M con Maní 49g",
-  "CONF_04_CHOCOBREAK_150G"      = "Chocobreak Surtido 150g",
-  "CONF_05_CHOCOBREAK_250G"      = "Chocobreak Surtido 250g",
-  "CONF_06_CHOCOLATE_CORONA_TRAD" = "Choc. Corona Tradicional",
-  "CONF_07_JUMBO_MANI"           = "Chocolatina Jumbo Maní 100g",
-  "CONF_09_FERRERO_ROCHER"       = "Ferrero Rocher Bombones x8"
+```{r tabla-consumidor, results='asis'}
+kable(
+  tabla_consumidor,
+  caption = "Canasta comparable: dónde está más barata cada presentación y cuánto se ahorra.",
+  align = c("l", "l", "l", "r", "r", "r"),
+  row.names = FALSE
 )
 ```
 
-### Gráfico 1: Comparación de Precios de Presentaciones Idénticas
+<p class="small">Precios de venta observados el 05/11/2026. No incluyen domicilio, mínimos de compra, cupones, programas de fidelización ni precios de tienda física.</p>
 
-```{r grafico_1}
-df_g1 <- df_obs %>%
-  filter(!is.na(id_producto_comun), id_producto_comun %in% names(nombres_canasta)) %>%
-  mutate(producto_nombre = recode(id_producto_comun, !!!nombres_canasta)) %>%
-  group_by(producto_nombre, comercio) %>%
-  summarise(precio_cop = min(precio_cop), .groups = "drop")
+<div class="callout callout-success">
+<strong>Si quieres una sola compra.</strong> La canasta completa más económica en un solo almacén es <strong>`r cesta$comercio[1]`</strong>, con <strong>`r fmt_cop(cesta$total[1])`</strong>. Si puedes combinar comercios, el costo baja a <strong>`r fmt_cop(cesta_mixta)`</strong>.
+</div>
 
-hchart(df_g1, type = "column", hcaes(x = producto_nombre, y = precio_cop, group = comercio)) %>%
-  hc_colors(unname(colores_tiendas[c("Carulla", "Éxito", "Jumbo")])) %>%
-  hc_title(text = "1. Comparación de Precios de Confitería: Las 3 Tiendas") %>%
-  hc_subtitle(text = "Precios observados para 8 presentaciones idénticas en Éxito, Carulla y Jumbo (COP)") %>%
-  hc_xAxis(title = list(text = "Producto / Presentación")) %>%
-  hc_yAxis(title = list(text = "Precio en Góndola (COP)"), labels = list(format = "${value:,.0f}")) %>%
-  hc_tooltip(
-    shared = TRUE,
-    headerFormat = "<b>{point.key}</b><br/>",
-    pointFormat = '<span style="color:{series.color}">\u25CF</span> {series.name}: <b>${point.y:,.0f} COP</b><br/>'
-  ) %>%
-  hc_plotOptions(column = list(borderRadius = 4, grouping = TRUE)) %>%
-  hc_exporting(enabled = TRUE)
+## 1. ¿Con qué datos contamos?
+
+<div class="callout callout-info">
+<strong>Respuesta corta.</strong> Trabajamos con 3 comercios, 13 presentaciones idénticas y 39 precios comparables. El catálogo completo de la categoría suma 5.875 observaciones dentro de la delimitación.
+</div>
+
+```{r q1, results='asis'}
+sql_q1 <- "
+WITH e AS (SELECT ? AS id)
+SELECT
+  (SELECT COUNT(*) FROM comercios) AS comercios,
+  (SELECT COUNT(*) FROM observaciones, e WHERE id_ejecucion = e.id) AS observaciones,
+  (SELECT COUNT(DISTINCT id_comercio) FROM observaciones, e WHERE id_ejecucion = e.id) AS comercios_con_datos,
+  (SELECT COUNT(*) FROM observaciones, e WHERE id_ejecucion = e.id AND es_comparable = 1) AS observaciones_comparables,
+  (SELECT COUNT(DISTINCT id_producto_comun) FROM observaciones, e
+    WHERE id_ejecucion = e.id AND es_comparable = 1) AS productos_comparables"
+q1 <- dbGetQuery(con, sql_q1, params = list(id_ejecucion))
+kable(fmt_tabla(q1), caption = "Conteos generales de la ejecución.", align = "r", row.names = FALSE, col.names = c("Comercios", "Observaciones", "Comercios con datos", "Observaciones comparables", "Productos comparables"))
+
+sql_q1b <- "
+SELECT c.nombre AS comercio,
+       COUNT(o.id_observacion) AS observaciones,
+       SUM(CASE WHEN o.es_comparable = 1 THEN 1 ELSE 0 END) AS comparables,
+       COUNT(DISTINCT o.subcategoria) AS subcategorias
+  FROM comercios c
+  LEFT JOIN observaciones o
+    ON o.id_comercio = c.id_comercio AND o.id_ejecucion = ?
+ GROUP BY c.nombre
+ ORDER BY observaciones DESC"
+q1b <- dbGetQuery(con, sql_q1b, params = list(id_ejecucion))
+kable(fmt_tabla(q1b), caption = "Aporte de cada comercio a la base.", align = c("l", "r", "r", "r"), row.names = FALSE, col.names = c("Comercio", "Observaciones", "Comparables", "Subcategorías"))
 ```
 
-* **Interpretación:** Éxito lidera en golosinas individuales como Kinder ($12,000 COP) y M&M Maní ($5,091 COP). Jumbo ofrece el mejor precio en chocolate de mesa Corona ($15,600 COP) y Carulla empata en Chocobreak 250g ($15,700 COP).
-* **Limitaciones:** Los precios no contemplan cargos por domicilio, mínimos de compra ni descuentos por medios de pago específicos.
+`r paste0(q1b$comercio, ": ", format(q1b$observaciones, big.mark = ".", decimal.mark = ",", scientific = FALSE), " observaciones", collapse = " · ")`. La canasta comparable está balanceada: 13 presentaciones × 3 comercios = 39 precios.
 
-### Gráfico 2: Precio por Gramo (Economía de Escala)
+## 2. ¿La comparación es justa?
 
-```{r grafico_2}
-df_g2 <- df_obs %>%
-  filter(id_producto_comun %in% c("CONF_04_CHOCOBREAK_150G", "CONF_05_CHOCOBREAK_250G", "CONF_06_CHOCOLATE_CORONA_TRAD")) %>%
+<div class="callout callout-success">
+<strong>Respuesta corta.</strong> Sí. Cada producto se comparó contra la misma marca, la misma variante, el mismo contenido y la misma unidad. No se mezclaron tamaños ni presentaciones distintas.
+</div>
+
+```{r q2, results='asis'}
+sql_q2 <- "
+WITH e AS (SELECT ? AS id),
+comparables AS (
+  SELECT o.id_producto_comun,
+         COUNT(DISTINCT o.id_comercio) AS n_comercios,
+         COUNT(*) AS n_obs
+    FROM observaciones o, e
+   WHERE o.id_ejecucion = e.id AND o.es_comparable = 1 AND o.disponible = 1
+   GROUP BY o.id_producto_comun
+)
+SELECT COUNT(*) AS productos_comparables,
+       SUM(CASE WHEN n_comercios = 3 THEN 1 ELSE 0 END) AS productos_con_tres_comercios,
+       SUM(n_obs) AS observaciones_comparables,
+       MIN(n_comercios) AS minimo_comercios,
+       MAX(n_comercios) AS maximo_comercios
+  FROM comparables"
+q2 <- dbGetQuery(con, sql_q2, params = list(id_ejecucion))
+kable(fmt_tabla(q2), caption = "Cobertura de la canasta comparable en la ejecución.", align = "r", row.names = FALSE, col.names = c("Productos comparables", "Con 3 comercios", "Observaciones comparables", "Mínimo de comercios", "Máximo de comercios"))
+
+sql_q2b <- "
+WITH e AS (SELECT ? AS id)
+SELECT COUNT(*) AS duplicados
+  FROM (
+    SELECT id_comercio, sku_comercio
+      FROM observaciones, e
+     WHERE id_ejecucion = e.id
+     GROUP BY id_comercio, sku_comercio
+    HAVING COUNT(*) > 1
+  )"
+q2b <- dbGetQuery(con, sql_q2b, params = list(id_ejecucion))
+kable(fmt_tabla(q2b), caption = "Registros repetidos del mismo SKU en la ejecución.", align = "r", row.names = FALSE, col.names = "Duplicados")
+```
+
+<div class="callout callout-info">
+<strong>Calidad de la canasta.</strong> Las `r nrow(comp)` observaciones comparables tienen precio, marca, contenido y URL. No hay faltantes que afecten la comparación y no hay SKUs duplicados en la ejecución.
+</div>
+
+<details>
+<summary>Ver la correspondencia exacta de las 13 presentaciones</summary>
+
+```{r tabla-mapa, results='asis'}
+print(kable(
+  mapa_ancho,
+  caption = "El mismo producto/presentación, con el nombre original de cada comercio.",
+  align = "l",
+  row.names = FALSE
+))
+```
+
+</details>
+
+## 3. ¿Dónde está más barato cada producto?
+
+<div class="callout callout-info">
+<strong>Respuesta corta.</strong> El más barato cambia producto por producto. En esta ejecución, Jumbo gana en 6 presentaciones (incluyendo un empate), Carulla en 4 y Éxito en 4.
+</div>
+
+```{r grafico-heatmap, fig.height=7, fig.cap="Precio de cada presentación comparable en los tres comercios. El color indica el porcentaje sobre el precio más barato de esa fila."}
+orden_sub <- c("Chocolates", "Gomitas y masmelos", "Mentas", "Caramelos")
+orden_deseado <- resumen_producto %>%
+  mutate(sub_orden = match(subcategoria, orden_sub)) %>%
+  arrange(sub_orden, desc(ahorro_pct)) %>%
+  pull(nombre_canonico)
+
+df_heat <- comp %>%
+  group_by(nombre_canonico, comercio) %>%
+  summarise(precio = min(precio_cop), .groups = "drop") %>%
+  group_by(nombre_canonico) %>%
   mutate(
-    presentacion_label = case_when(
-      str_detect(id_producto_comun, "CORONA") ~ paste0("Corona (", contenido_valor, "g) - ", comercio),
-      str_detect(id_producto_comun, "CHOCOBREAK") ~ paste0("Chocobreak (", contenido_valor, "g) - ", comercio),
-      TRUE ~ paste0(contenido_valor, "g - ", comercio)
+    precio_min = min(precio),
+    premium = 100 * (precio / precio_min - 1)
+  ) %>%
+  ungroup() %>%
+  mutate(nombre_canonico = factor(nombre_canonico, levels = rev(orden_deseado)))
+
+ggplot(df_heat, aes(x = comercio, y = nombre_canonico, fill = premium)) +
+  geom_tile(color = "white", linewidth = 0.9) +
+  geom_text(aes(label = fmt_cop(precio)), size = 3.1, fontface = "bold", colour = "grey10") +
+  scale_fill_gradientn(
+    colours = c("#1E8449", "#A9DFBF", "#F9E79F", "#F5B041", "#C0392B"),
+    values = scales::rescale(c(0, 5, 15, 30, 50)),
+    limits = c(0, max(0.1, max(df_heat$premium))),
+    name = "% sobre el\nmás barato"
+  ) +
+  labs(
+    x = NULL, y = NULL,
+    title = "¿Cuánto cuesta la misma presentación en cada comercio?",
+    subtitle = "Precio observado en COP. Verde = más barato; rojo = más caro dentro de la misma fila.",
+    caption = "Fuente: elaboración propia con datos de scraping. Precios de la ejecución de análisis."
+  ) +
+  scale_x_discrete(limits = c("Éxito", "Carulla", "Jumbo")) +
+  tema_informe +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 11),
+    axis.text.y = element_text(size = 9)
+  )
+```
+
+
+```{r grafico-podio, fig.height=4.8, fig.cap="Número de presentaciones en las que cada comercio es el más barato. Incluye el empate de Millows 300 g entre Éxito y Jumbo."}
+df_podio <- ganadoras %>%
+  rename(Comercio = mas_barato, Victorias = victorias) %>%
+  mutate(Comercio = factor(Comercio, levels = c("Jumbo", "Carulla", "Éxito")))
+
+ggplot(df_podio, aes(x = Comercio, y = Victorias, fill = Comercio)) +
+  geom_col(width = 0.62) +
+  geom_text(aes(label = Victorias), vjust = -0.35, size = 5.2, fontface = "bold", colour = "#3E2723") +
+  scale_fill_manual(values = colores_tiendas) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.22)), breaks = 0:7) +
+  labs(
+    x = NULL, y = "Presentaciones donde es el más barato",
+    title = "¿Quién gana más veces?",
+    subtitle = "Conteo sobre las 13 presentaciones; un empate cuenta para ambos comercios",
+    caption = "Fuente: elaboración propia con datos de scraping."
+  ) +
+  tema_informe +
+  theme(legend.position = "none")
+```
+
+
+```{r q3, results='asis'}
+sql_q3 <- "
+WITH e AS (SELECT ? AS id),
+precios AS (
+  SELECT o.id_producto_comun, o.nombre_canonico, o.comercio, o.precio_cop,
+         MIN(o.precio_cop) OVER (PARTITION BY o.id_producto_comun) AS precio_min,
+         MAX(o.precio_cop) OVER (PARTITION BY o.id_producto_comun) AS precio_max,
+         AVG(o.precio_cop) OVER (PARTITION BY o.id_producto_comun) AS precio_prom,
+         RANK() OVER (PARTITION BY o.id_producto_comun ORDER BY o.precio_cop) AS rk
+    FROM v_observaciones o, e
+   WHERE o.id_ejecucion = e.id AND o.es_comparable = 1 AND o.disponible = 1
+)
+SELECT id_producto_comun, nombre_canonico,
+       MIN(precio_min) AS precio_min,
+       MAX(precio_max) AS precio_max,
+       ROUND(AVG(precio_prom), 0) AS precio_prom,
+       GROUP_CONCAT(DISTINCT CASE WHEN rk = 1 THEN comercio END) AS comercios_mas_baratos
+  FROM precios
+ GROUP BY id_producto_comun, nombre_canonico
+ ORDER BY id_producto_comun"
+q3 <- dbGetQuery(con, sql_q3, params = list(id_ejecucion)) %>%
+  mutate(
+    `Precio mínimo` = fmt_cop(precio_min),
+    `Precio máximo` = fmt_cop(precio_max),
+    `Precio promedio` = fmt_cop(precio_prom),
+    `Más barato en` = str_replace_all(comercios_mas_baratos, ",", ", ")
+  ) %>%
+  select(Producto = nombre_canonico, `Precio mínimo`, `Precio máximo`,
+         `Precio promedio`, `Más barato en`)
+kable(q3, caption = "Precios extremos y comercio más barato; los empates se listan juntos.", align = c("l", "r", "r", "r", "l"), row.names = FALSE, format.args = list(big.mark = ".", decimal.mark = ","))
+```
+
+**Cómo leer el mapa.** Cada fila es una presentación; cada columna, un comercio. El verde marca el precio más bajo de esa fila y el rojo, el más alto. La etiqueta muestra el precio en pesos. Así se ve de un vistazo dónde conviene comprar cada producto, sin promediar surtidos distintos.
+
+## 4. ¿Cuánto ahorro si cambio de comercio?
+
+<div class="callout callout-warning">
+<strong>Respuesta corta.</strong> El ahorro relativo va de **`r fmt_pct(prod_menor$ahorro_pct)`** a **`r fmt_pct(prod_mayor$ahorro_pct)`**. El mayor ahorro en pesos está en **`r prod_mayor_abs$nombre_canonico`**: **`r fmt_cop(prod_mayor_abs$ahorro_cop)`**.
+</div>
+
+```{r grafico-ahorro, fig.height=6.5, fig.cap="Ahorro porcentual y en pesos al elegir la oferta más económica de cada presentación."}
+df_sav <- resumen_producto %>%
+  mutate(nombre_canonico = factor(nombre_canonico, levels = nombre_canonico[order(ahorro_pct)]))
+
+ggplot(df_sav, aes(x = ahorro_pct, y = nombre_canonico)) +
+  geom_segment(aes(x = 0, xend = ahorro_pct, y = nombre_canonico, yend = nombre_canonico),
+               colour = "grey75", linewidth = 0.8) +
+  geom_point(aes(size = ahorro_cop), colour = "#C0392B") +
+  geom_text(aes(label = paste0(fmt_pct(ahorro_pct), "  (", fmt_cop(ahorro_cop), ")")),
+            hjust = -0.15, size = 3.1) +
+  scale_x_continuous(labels = function(x) paste0(x, "%"), expand = expansion(mult = c(0, 0.35))) +
+  scale_size_continuous(range = c(2, 7), guide = "none") +
+  labs(
+    x = "Ahorro al elegir el comercio más barato", y = NULL,
+    title = "¿Dónde está el ahorro más grande?",
+    subtitle = "Porcentaje sobre el precio más alto; entre paréntesis, ahorro en pesos.",
+    caption = "Fuente: elaboración propia. El tamaño del punto representa el ahorro absoluto."
+  ) +
+  tema_informe +
+  theme(panel.grid.major.y = element_blank())
+```
+
+```{r q4, results='asis'}
+sql_q4 <- "
+WITH e AS (SELECT ? AS id)
+SELECT id_producto_comun, nombre_canonico,
+       MIN(precio_cop) AS precio_min,
+       MAX(precio_cop) AS precio_max,
+       MAX(precio_cop) - MIN(precio_cop) AS ahorro_cop,
+       ROUND(100.0 * (MAX(precio_cop) - MIN(precio_cop)) / MAX(precio_cop), 1) AS ahorro_pct
+  FROM v_observaciones, e
+ WHERE id_ejecucion = e.id AND es_comparable = 1 AND disponible = 1
+ GROUP BY id_producto_comun, nombre_canonico
+ ORDER BY ahorro_pct DESC"
+q4 <- dbGetQuery(con, sql_q4, params = list(id_ejecucion)) %>%
+  transmute(
+    Producto = nombre_canonico,
+    `Precio mínimo` = fmt_cop(precio_min),
+    `Precio máximo` = fmt_cop(precio_max),
+    `Ahorro COP` = fmt_cop(ahorro_cop),
+    `Ahorro %` = fmt_pct(ahorro_pct)
+  )
+kable(q4, caption = "Ahorro potencial al elegir la oferta más económica de cada presentación.", align = c("l", "r", "r", "r", "r"), row.names = FALSE, format.args = list(big.mark = ".", decimal.mark = ","))
+```
+
+**Lectura.** La mayor brecha relativa está en **`r prod_mayor$nombre_canonico`** (`r fmt_pct(prod_mayor$ahorro_pct)`, `r fmt_cop(prod_mayor$ahorro_cop)`). La mayor brecha absoluta está en **`r prod_mayor_abs$nombre_canonico`** (`r fmt_cop(prod_mayor_abs$ahorro_cop)`). Son dos formas distintas de mirar el mismo ahorro: porcentaje para comparar productos de distinto precio, pesos para saber cuánto entra en el bolsillo.
+
+```{r tabla-promos, results='asis'}
+if (nrow(promos) > 0) {
+  print(kable(
+    promos,
+    caption = "Precios promocionales detectados: el precio de venta es menor al precio de lista.",
+    align = c("l", "l", "r", "r", "r"),
+    row.names = FALSE
+  ))
+  cat("\n**Ojo con las promociones.** El precio comparado es el de venta. Si la promoción termina, el ranking de esas presentaciones puede cambiar.\n")
+}
+```
+
+## 5. ¿La presentación grande conviene?
+
+<div class="callout callout-warning">
+<strong>Respuesta corta.</strong> No siempre. En Corona tradicional, la barra de 200 g de Éxito es la más eficiente por 100 g; la de 450 g no mejora ese indicador en Éxito ni en Carulla. En Millows original, la de 300 g sí es más eficiente que la de 75 g en los tres comercios.
+</div>
+
+```{r q5, results='asis'}
+sql_q5 <- "
+WITH e AS (SELECT ? AS id),
+base AS (
+  SELECT o.*,
+         CASE
+           WHEN o.id_producto_comun IN ('CONF_01_CORONA_TRAD_200G', 'CONF_02_CORONA_TRAD_450G') THEN 'Corona tradicional'
+           WHEN o.id_producto_comun IN ('CONF_09_MILLOWS_75G', 'CONF_10_MILLOWS_300G') THEN 'Millows original'
+           ELSE o.nombre_canonico
+         END AS producto_base,
+         o.precio_cop / o.contenido_valor * 100 AS precio_100g
+    FROM v_observaciones o, e
+   WHERE o.id_ejecucion = e.id
+     AND o.es_comparable = 1 AND o.disponible = 1
+     AND o.contenido_unidad = 'g' AND o.contenido_valor > 0
+)
+SELECT producto_base, nombre_canonico, comercio, contenido_valor,
+       precio_cop, ROUND(precio_100g, 1) AS precio_100g,
+       RANK() OVER (PARTITION BY producto_base ORDER BY precio_100g) AS rk
+  FROM base
+ ORDER BY producto_base, precio_100g"
+q5 <- dbGetQuery(con, sql_q5, params = list(id_ejecucion)) %>%
+  filter(producto_base %in% c("Corona tradicional", "Millows original")) %>%
+  transmute(
+    Producto = producto_base,
+    Presentación = paste0(contenido_valor, " g"),
+    Comercio = comercio,
+    `Precio` = fmt_cop(precio_cop),
+    `COP por 100 g` = fmt_cop(precio_100g),
+    `Ranking` = rk
+  )
+kable(q5, caption = "Precio por 100 g en las dos familias con más de una presentación comparable.", align = c("l", "l", "l", "r", "r", "r"), row.names = FALSE, format.args = list(big.mark = ".", decimal.mark = ","))
+```
+
+```{r grafico-unitario, fig.height=6, fig.cap="Precio por 100 g en las dos familias con dos presentaciones comparables: Corona tradicional y Millows original."}
+df_unit <- comp %>%
+  filter(id_producto_comun %in% c(
+    "CONF_01_CORONA_TRAD_200G", "CONF_02_CORONA_TRAD_450G",
+    "CONF_09_MILLOWS_75G", "CONF_10_MILLOWS_300G"
+  )) %>%
+  mutate(
+    producto_base = case_when(
+      str_detect(id_producto_comun, "CORONA") ~ "Corona tradicional",
+      str_detect(id_producto_comun, "MILLOWS") ~ "Millows original"
+    ),
+    presentacion = paste0(contenido_valor, " g"),
+    cop_100g = precio_cop / contenido_valor * 100
+  )
+
+ggplot(df_unit, aes(x = comercio, y = cop_100g, fill = presentacion)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.65) +
+  geom_text(aes(label = fmt_cop(cop_100g)),
+            position = position_dodge(width = 0.75), vjust = -0.35, size = 3) +
+  facet_wrap(~ producto_base, scales = "free_y") +
+  scale_fill_manual(
+    values = c("200 g" = "#F2B705", "450 g" = "#8D5524",
+               "75 g" = "#7FB3D5", "300 g" = "#1565C0"),
+    breaks = c("200 g", "450 g", "75 g", "300 g")
+  ) +
+  scale_y_continuous(labels = function(x) paste0("$", formatC(x, big.mark = ".", decimal.mark = ",", format = "d")),
+                     expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    x = NULL, y = "COP por 100 g", fill = "Presentación",
+    title = "¿La presentación grande siempre es más barata por gramo?",
+    subtitle = "Cada panel compara dos tamaños del mismo producto; barras más bajas = mejor precio por 100 g.",
+    caption = "Fuente: elaboración propia. Solo se incluyen presentaciones con contenido explícito en gramos."
+  ) +
+  tema_informe +
+  theme(legend.position = "top", panel.grid.major.x = element_blank())
+```
+
+**Lectura.** La presentación grande suele reducir el precio por gramo, pero no de forma automática. Hay que mirar el **precio por 100 g** y no solo el tamaño del empaque. Además, la presentación grande exige más dinero en la caja: una cosa es el ahorro unitario y otra el desembolso total.
+
+## 6. ¿Dónde están las mayores diferencias?
+
+<div class="callout callout-info">
+<strong>Respuesta corta.</strong> La mayor diferencia absoluta está en **`r prod_mayor_abs$nombre_canonico`** (`r fmt_cop(prod_mayor_abs$ahorro_cop)`); la mayor diferencia relativa, en **`r prod_mayor$nombre_canonico`** (`r fmt_pct(prod_mayor$ahorro_pct)`).
+</div>
+
+
+```{r grafico-burbuja, fig.height=6.6, fig.cap="Relación entre el ahorro relativo y el ahorro absoluto. El tamaño del punto representa el precio máximo observado; el color, la subcategoría."}
+df_burbuja <- resumen_producto %>%
+  mutate(
+    etiqueta = case_when(
+      str_detect(nombre_canonico, "Lindt") ~ "Lindt 70% 100 g",
+      str_detect(nombre_canonico, "Ferrero") ~ "Ferrero corazón 100 g",
+      str_detect(nombre_canonico, "Vidal") ~ "Vidal ojos 90 g",
+      str_detect(nombre_canonico, "Trululu.*gusanos") ~ "Trululu gusanos 100 g",
+      str_detect(nombre_canonico, "Trululu.*aros") ~ "Trululu aros 300 g",
+      str_detect(nombre_canonico, "Nerds") ~ "Nerds uva fresa 46 g",
+      str_detect(nombre_canonico, "Corona.*200") ~ "Corona 200 g",
+      TRUE ~ ""
     )
-  ) %>%
-  group_by(presentacion_label, comercio, contenido_valor) %>%
-  summarise(cop_por_gramo = round(mean(precio_por_unidad), 1), .groups = "drop") %>%
-  arrange(cop_por_gramo)
+  )
 
-hchart(df_g2, type = "bar", hcaes(x = presentacion_label, y = cop_por_gramo, color = comercio)) %>%
-  hc_colors(unname(colores_tiendas[c("Carulla", "Éxito", "Jumbo")])) %>%
-  hc_title(text = "2. Eficiencia de Contenido: Precio por Gramo (COP / g)") %>%
-  hc_subtitle(text = "Economía de escala: empaques pequeños vs. empaques familiares") %>%
-  hc_xAxis(title = list(text = "Presentación y Comercio")) %>%
-  hc_yAxis(title = list(text = "Costo por Gramo (COP/g)"), labels = list(format = "${value:,.0f}/g")) %>%
-  hc_tooltip(pointFormat = '<b>{point.comercio}</b><br/>Costo unitario: <b>${point.y:.1f} COP/g</b>') %>%
-  hc_plotOptions(bar = list(
-    borderRadius = 4,
-    dataLabels = list(enabled = TRUE, format = "${point.y:.1f}/g")
-  )) %>%
-  hc_exporting(enabled = TRUE)
+ggplot(df_burbuja, aes(x = ahorro_pct, y = ahorro_cop, size = precio_max, colour = subcategoria)) +
+  geom_point(alpha = 0.82) +
+  ggrepel::geom_text_repel(
+    aes(label = etiqueta),
+    size = 2.5, max.overlaps = Inf, force = 2, seed = 42,
+    box.padding = 0.55, point.padding = 0.45,
+    min.segment.length = 0, segment.colour = "grey70", segment.size = 0.3,
+    show.legend = FALSE
+  ) +
+  coord_cartesian(clip = "off") +
+  scale_size_continuous(range = c(3, 10), guide = "none") +
+  scale_colour_manual(values = colores_subcategoria) +
+  scale_x_continuous(labels = function(x) paste0(x, "%"), expand = expansion(mult = c(0.15, 0.15))) +
+  scale_y_continuous(labels = function(x) paste0("$", format(x, big.mark = ".", scientific = FALSE, trim = TRUE))) +
+  labs(
+    x = "Ahorro relativo (%)", y = "Ahorro absoluto (COP)", colour = "Subcategoría",
+    title = "No todo ahorro es igual: porcentaje vs. pesos",
+    subtitle = "El tamaño del punto representa el precio máximo observado",
+    caption = "Fuente: elaboración propia. Solo presentaciones comparables."
+  ) +
+  tema_informe
 ```
 
-* **Interpretación:** En Chocobreak, el empaque de 250g reduce el costo a **$62.8 COP/g**, lo que representa un ahorro unitario de hasta el **24%** frente a la presentación de 150g ($77.7 COP/g).
-* **Limitaciones:** El ahorro unitario solo se materializa si se consume todo el producto antes de su vencimiento.
 
-### Gráfico 3: Oportunidades de Ahorro Potencial
+```{r q6, results='asis'}
+sql_q6 <- "
+WITH e AS (SELECT ? AS id)
+SELECT id_producto_comun, nombre_canonico,
+       MIN(precio_cop) AS precio_min,
+       MAX(precio_cop) AS precio_max,
+       MAX(precio_cop) - MIN(precio_cop) AS diferencia_cop,
+       ROUND(100.0 * (MAX(precio_cop) - MIN(precio_cop)) / MAX(precio_cop), 1) AS diferencia_pct
+  FROM v_observaciones, e
+ WHERE id_ejecucion = e.id AND es_comparable = 1 AND disponible = 1
+ GROUP BY id_producto_comun, nombre_canonico
+ ORDER BY diferencia_cop DESC"
+q6 <- dbGetQuery(con, sql_q6, params = list(id_ejecucion)) %>%
+  transmute(
+    Producto = nombre_canonico,
+    `Diferencia COP` = fmt_cop(diferencia_cop),
+    `Diferencia %` = fmt_pct(diferencia_pct),
+    `Precio mínimo` = fmt_cop(precio_min),
+    `Precio máximo` = fmt_cop(precio_max)
+  )
+kable(q6, caption = "Ranking por diferencia absoluta entre el precio máximo y el mínimo.", align = c("l", "r", "r", "r", "r"), row.names = FALSE, format.args = list(big.mark = ".", decimal.mark = ","))
+```
 
-```{r grafico_3}
-con <- dbConnect(SQLite(), "comparador_precios.sqlite")
-df_g3 <- dbGetQuery(con, "
-  SELECT 
-    id_producto_comun,
-    MIN(precio_cop) AS precio_min,
-    MAX(precio_cop) AS precio_max,
-    ROUND(MAX(precio_cop) - MIN(precio_cop), 0) AS ahorro_absoluto_cop,
-    ROUND(100.0 * (MAX(precio_cop) - MIN(precio_cop)) / MAX(precio_cop), 1) AS ahorro_porcentual
-  FROM observaciones
-  WHERE es_comparable = 1
-  GROUP BY id_producto_comun
-  HAVING COUNT(DISTINCT comercio) > 1
-  ORDER BY ahorro_porcentual ASC;
-")
+**Lectura.** El tamaño del punto representa el precio máximo: los productos caros pueden tener un ahorro absoluto alto aunque su porcentaje no sea el mayor. Ordenar por pesos y ordenar por porcentaje cuenta dos historias complementarias.
+
+## 7. ¿Hay datos que falten?
+
+<div class="callout callout-success">
+<strong>Respuesta corta.</strong> En la canasta comparable, **cero**. Las 39 observaciones tienen precio, marca, contenido y URL. En el catálogo completo sí hay ausencias: `r format(sum(is.na(obs$precio_cop)), big.mark = ".", decimal.mark = ",", scientific = FALSE)` productos sin precio y `r sum(is.na(obs$contenido_valor))` sin contenido identificable en el nombre.
+</div>
+
+
+```{r grafico-faltantes, fig.height=4.8, fig.cap="Faltantes de precio y contenido en la canasta comparable y en el catálogo completo de la ejecución."}
+df_faltantes <- tibble(
+  Ambito = c("Canasta comparable", "Catálogo completo", "Canasta comparable", "Catálogo completo"),
+  Tipo = c("Sin precio", "Sin precio", "Sin contenido", "Sin contenido"),
+  N = c(
+    sum(is.na(comp$precio_cop)), sum(is.na(obs$precio_cop)),
+    sum(is.na(comp$contenido_valor)), sum(is.na(obs$contenido_valor))
+  )
+) %>%
+  mutate(Tipo = factor(Tipo, levels = c("Sin precio", "Sin contenido")))
+
+ggplot(df_faltantes, aes(x = Tipo, y = N, fill = Ambito)) +
+  geom_col(position = position_dodge(width = 0.65), width = 0.6) +
+  geom_text(aes(label = format(N, big.mark = ".", scientific = FALSE)),
+            position = position_dodge(width = 0.65), vjust = -0.35, size = 3.8, fontface = "bold") +
+  scale_fill_manual(values = c("Canasta comparable" = "#2E7D32", "Catálogo completo" = "#C62828")) +
+  scale_y_continuous(labels = function(x) format(x, big.mark = ".", scientific = FALSE, trim = TRUE),
+                     expand = expansion(mult = c(0, 0.2))) +
+  labs(
+    x = NULL, y = "Registros", fill = NULL,
+    title = "¿Qué datos faltan y a quién afectan?",
+    subtitle = "La canasta comparable no tiene faltantes; el catálogo completo sí",
+    caption = "Fuente: elaboración propia. Un dato ausente queda como NULL, nunca como cero."
+  ) +
+  tema_informe
+```
+
+
+```{r q7, results='asis'}
+sql_q7a <- "
+WITH e AS (SELECT ? AS id)
+SELECT
+  COUNT(*) AS total,
+  SUM(CASE WHEN precio_cop IS NULL THEN 1 ELSE 0 END) AS sin_precio,
+  SUM(CASE WHEN contenido_valor IS NULL THEN 1 ELSE 0 END) AS sin_contenido,
+  SUM(CASE WHEN marca IS NULL OR TRIM(marca) = '' THEN 1 ELSE 0 END) AS sin_marca,
+  SUM(CASE WHEN descripcion_original IS NULL OR TRIM(descripcion_original) = '' THEN 1 ELSE 0 END) AS sin_descripcion,
+  SUM(CASE WHEN url_producto IS NULL OR TRIM(url_producto) = '' THEN 1 ELSE 0 END) AS sin_url
+  FROM observaciones, e
+ WHERE id_ejecucion = e.id"
+q7a <- dbGetQuery(con, sql_q7a, params = list(id_ejecucion))
+kable(fmt_tabla(q7a), caption = "Faltantes en el catálogo completo de la ejecución.", align = "r", row.names = FALSE, col.names = c("Total", "Sin precio", "Sin contenido", "Sin marca", "Sin descripción", "Sin URL"))
+
+sql_q7b <- "
+WITH e AS (SELECT ? AS id)
+SELECT
+  COUNT(*) AS total,
+  SUM(CASE WHEN precio_cop IS NULL THEN 1 ELSE 0 END) AS sin_precio,
+  SUM(CASE WHEN contenido_valor IS NULL THEN 1 ELSE 0 END) AS sin_contenido,
+  SUM(CASE WHEN marca IS NULL OR TRIM(marca) = '' THEN 1 ELSE 0 END) AS sin_marca,
+  SUM(CASE WHEN url_producto IS NULL OR TRIM(url_producto) = '' THEN 1 ELSE 0 END) AS sin_url
+  FROM observaciones, e
+ WHERE id_ejecucion = e.id AND es_comparable = 1"
+q7b <- dbGetQuery(con, sql_q7b, params = list(id_ejecucion))
+kable(fmt_tabla(q7b), caption = "Faltantes en la canasta comparable: no debería haber ninguno.", align = "r", row.names = FALSE, col.names = c("Total", "Sin precio", "Sin contenido", "Sin marca", "Sin URL"))
+```
+
+**Lectura.** Las ausencias del catálogo completo no afectan la comparación de las 13 presentaciones: la canasta se armó solo con productos que tenían precio y contenido en los tres comercios. No se imputó ningún precio ni contenido; un dato ausente quedó como ausente, no como cero.
+
+## 8. ¿Qué tan grande es la oferta?
+
+<div class="callout callout-info">
+<strong>Respuesta corta.</strong> Éxito y Carulla tienen catálogos más amplios, pero solo una parte tiene precio disponible. Jumbo tiene menos productos, pero casi todos están disponibles.
+</div>
+
+
+```{r grafico-disponibilidad, fig.height=4.8, fig.cap="Proporción del catálogo incluido que tiene precio disponible en cada comercio."}
+ggplot(disponibilidad, aes(x = Comercio, y = N, fill = Estado)) +
+  geom_col(position = "fill", width = 0.62) +
+  geom_text(
+    aes(label = ifelse(Estado == "Con precio", paste0(round(pct), "%"), ""),
+        colour = Estado),
+    position = position_fill(vjust = 0.5), size = 4.2, fontface = "bold", show.legend = FALSE
+  ) +
+  scale_fill_manual(values = c("Con precio" = "#2E7D32", "Sin precio" = "#E0C9B7")) +
+  scale_colour_manual(values = c("Con precio" = "white", "Sin precio" = "#3E2723")) +
+  scale_y_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+  labs(
+    x = NULL, y = "% del catálogo incluido", fill = NULL,
+    title = "¿Qué proporción de la oferta está disponible?",
+    subtitle = "Jumbo tiene menos productos, pero casi todos tienen precio",
+    caption = "Fuente: elaboración propia. Catálogo incluido = productos dentro de la delimitación."
+  ) +
+  tema_informe
+```
+
+
+```{r q8, results='asis'}
+sql_q8 <- "
+WITH e AS (SELECT ? AS id)
+SELECT c.nombre AS comercio,
+       ec.n_reportado_sitio AS reportados,
+       ec.n_extraido AS extraidos,
+       ec.n_incluido AS incluidos,
+       ec.n_con_precio AS con_precio,
+       ROUND(100.0 * ec.n_con_precio / NULLIF(ec.n_incluido, 0), 1) AS pct_con_precio,
+       ROUND(100.0 * SUM(CASE WHEN o.marca IS NOT NULL AND TRIM(o.marca) <> '' THEN 1 ELSE 0 END) / COUNT(o.id_observacion), 1) AS pct_marca,
+       ROUND(100.0 * SUM(CASE WHEN o.contenido_valor IS NOT NULL THEN 1 ELSE 0 END) / COUNT(o.id_observacion), 1) AS pct_contenido,
+       ROUND(100.0 * SUM(CASE WHEN o.descripcion_original IS NOT NULL AND TRIM(o.descripcion_original) <> '' THEN 1 ELSE 0 END) / COUNT(o.id_observacion), 1) AS pct_descripcion
+  FROM ejecuciones_comercio ec
+  JOIN comercios c ON c.id_comercio = ec.id_comercio
+  JOIN e ON ec.id_ejecucion = e.id
+  JOIN observaciones o ON o.id_comercio = ec.id_comercio AND o.id_ejecucion = ec.id_ejecucion
+ WHERE ec.id_ejecucion = e.id
+ GROUP BY c.nombre, ec.n_reportado_sitio, ec.n_extraido, ec.n_incluido, ec.n_con_precio
+ ORDER BY incluidos DESC"
+q8 <- dbGetQuery(con, sql_q8, params = list(id_ejecucion)) %>%
+  transmute(
+    Comercio = comercio,
+    `Reportados` = reportados,
+    `Extraídos` = extraidos,
+    `Incluidos` = incluidos,
+    `Con precio` = con_precio,
+    `% con precio` = fmt_pct(pct_con_precio),
+    `% con marca` = fmt_pct(pct_marca),
+    `% con contenido` = fmt_pct(pct_contenido),
+    `% con descripción` = fmt_pct(pct_descripcion)
+  )
+kable(fmt_tabla(q8), caption = "Tamaño de la oferta y calidad de los atributos por comercio.", align = c("l", "r", "r", "r", "r", "r", "r", "r", "r"), row.names = FALSE, format.args = list(big.mark = ".", decimal.mark = ","))
+```
+
+**Lectura.** El tamaño del catálogo no es lo mismo que la oferta disponible. Éxito y Carulla publican miles de productos, pero una fracción importante está agotada o sin precio en línea. Jumbo publica menos, pero su tasa de disponibilidad es casi total. La comparación de precios se hizo solo con productos disponibles en los tres comercios.
+
+## 9. ¿Y si compro todo en un solo lugar?
+
+<div class="callout callout-warning">
+<strong>Respuesta corta.</strong> Comprar las 13 presentaciones en un solo almacén cuesta entre **`r fmt_cop(min(cesta$total))`** y **`r fmt_cop(max(cesta$total))`**. La opción más barata es **`r cesta$comercio[1]`** con **`r fmt_cop(cesta$total[1])`**.
+</div>
+
+
+```{r grafico-canasta, fig.height=5, fig.cap="Costo de las 13 presentaciones compradas en un solo comercio y costo de la mezcla inteligente."}
+df_canasta <- bind_rows(
+  cesta %>% transmute(Comercio = comercio, Total = total, Tipo = "Un solo comercio"),
+  tibble(Comercio = "Mezcla inteligente", Total = cesta_mixta, Tipo = "Mezcla")
+) %>%
+  mutate(
+    Comercio = factor(Comercio, levels = c("Jumbo", "Carulla", "Éxito", "Mezcla inteligente")),
+    Tipo = factor(Tipo, levels = c("Un solo comercio", "Mezcla"))
+  )
+
+ggplot(df_canasta, aes(x = Comercio, y = Total, fill = Comercio)) +
+  geom_col(width = 0.62) +
+  geom_text(aes(label = fmt_cop(Total)), vjust = -0.35, size = 4.2, fontface = "bold", colour = "#3E2723") +
+  scale_fill_manual(values = c(
+    "Éxito" = "#F2B705", "Carulla" = "#2E7D32",
+    "Jumbo" = "#1565C0", "Mezcla inteligente" = "#C47A3D"
+  )) +
+  scale_y_continuous(
+    labels = function(x) paste0("$", format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE)),
+    expand = expansion(mult = c(0, 0.16))
+  ) +
+  labs(
+    x = NULL, y = "Costo de la canasta (COP)",
+    title = "¿Cuánto cuesta comprar las 13 presentaciones?",
+    subtitle = "La mezcla inteligente compra cada producto donde está más barato",
+    caption = "Fuente: elaboración propia. No incluye domicilio ni mínimos de compra."
+  ) +
+  tema_informe +
+  theme(legend.position = "none")
+```
+
+
+```{r tabla-cesta, results='asis'}
+kable(
+  tabla_cesta,
+  caption = "Costo de las mismas presentaciones compradas en un solo comercio.",
+  align = c("l", "r", "r"),
+  row.names = FALSE
+)
+```
+
+**Lectura.** La mezcla inteligente —comprar cada producto donde está más barato— cuesta **`r fmt_cop(cesta_mixta)`**: un ahorro de **`r fmt_cop(ahorro_mixto_cop)`** (`r fmt_pct(ahorro_mixto_pct)`) frente a la canasta más costosa. Pero exige visitar varios comercios o pagar varios domicilios. Si el envío cuesta más que el ahorro, conviene comprar todo en un solo lugar.
+
+## Cómo se hizo
+
+<div class="steps">
+<div class="step">
+<div class="step-num">1</div>
+<h3>Elegimos la categoría</h3>
+<p>Confitería empacada: chocolates, caramelos, gomitas, chicles y mentas. Excluimos suplementos, pastillas para la garganta, café, cocoa y artículos de fiesta.</p>
+</div>
+<div class="step">
+<div class="step-num">2</div>
+<h3>Rastreamos la categoría completa</h3>
+<p>`r format(n_extraido_total, big.mark = ".", decimal.mark = ",", scientific = FALSE)` productos extraídos en las ramas equivalentes de los tres comercios; `r format(n_incluido_total, big.mark = ".", decimal.mark = ",", scientific = FALSE)` quedaron dentro de la delimitación.</p>
+</div>
+<div class="step">
+<div class="step-num">3</div>
+<h3>Comparamos lo mismo</h3>
+<p>13 presentaciones con la misma marca, variante, contenido y unidad. La correspondencia se revisó una por una contra el texto original de cada sitio.</p>
+</div>
+<div class="step">
+<div class="step-num">4</div>
+<h3>Revisamos y repetimos</h3>
+<p>Dos ejecuciones completas, verificaciones de duplicados y una prueba de reprocesamiento sin conexión. El resultado offline fue idéntico.</p>
+</div>
+</div>
+
+<div class="store-grid">
+<div class="store-card exito">
+<div class="store-tag">Grupo Éxito</div>
+<h3>Éxito</h3>
+<p><strong>`r format(conteos_comercio$n_incluido[conteos_comercio$comercio == "Éxito"], big.mark = ".", decimal.mark = ",", scientific = FALSE)`</strong> productos en la categoría; <strong>`r fmt_pct(100 * conteos_comercio$n_con_precio[conteos_comercio$comercio == "Éxito"] / conteos_comercio$n_incluido[conteos_comercio$comercio == "Éxito"])`</strong> con precio disponible.</p>
+</div>
+<div class="store-card carulla">
+<div class="store-tag">Grupo Éxito</div>
+<h3>Carulla</h3>
+<p><strong>`r format(conteos_comercio$n_incluido[conteos_comercio$comercio == "Carulla"], big.mark = ".", decimal.mark = ",", scientific = FALSE)`</strong> productos en la categoría; <strong>`r fmt_pct(100 * conteos_comercio$n_con_precio[conteos_comercio$comercio == "Carulla"] / conteos_comercio$n_incluido[conteos_comercio$comercio == "Carulla"])`</strong> con precio disponible.</p>
+</div>
+<div class="store-card jumbo">
+<div class="store-tag">Cencosud</div>
+<h3>Jumbo</h3>
+<p><strong>`r format(conteos_comercio$n_incluido[conteos_comercio$comercio == "Jumbo"], big.mark = ".", decimal.mark = ",", scientific = FALSE)`</strong> productos en la categoría; <strong>`r fmt_pct(100 * conteos_comercio$n_con_precio[conteos_comercio$comercio == "Jumbo"] / conteos_comercio$n_incluido[conteos_comercio$comercio == "Jumbo"])`</strong> con precio disponible.</p>
+</div>
+</div>
+
+<div class="callout callout-info">
+<strong>Qué quedó por fuera.</strong> Se descartaron `r format(excl_total, big.mark = ".", decimal.mark = ",", scientific = FALSE)` registros: `r format(excl_cafe, big.mark = ".", decimal.mark = ",", scientific = FALSE)` de café u otras categorías que aparecen en ramas mixtas, `r excl_no_choco` que no eran chocolate, `r excl_fiesta` de fiesta o decoración, `r excl_halls` de Halls, `r excl_sup` suplementos y `r excl_bebida` bebidas en polvo. Todos los descartes conservan su motivo y su texto original.
+</div>
+
+<div class="callout callout-success">
+<strong>Dos ejecuciones.</strong> La base conserva dos corridas completas, a las 22:29 y a las 22:34. En ese intervalo no se observaron cambios de precio. La estructura permite repetir la captura en otra fecha y comparar la evolución.
+</div>
+
+## Limitaciones
+
+<div class="cards-3">
+<div class="finding">
+<h3>Una foto, no una película</h3>
+<p>Los precios corresponden al momento de la captura. No son permanentes y pueden cambiar por promociones o ajustes de inventario.</p>
+</div>
+<div class="finding">
+<h3>Sin costos de envío</h3>
+<p>No se incluyen domicilio, mínimos de compra, cupones, fidelización ni precios de tienda física. El ahorro puede desaparecer si el envío cuesta más.</p>
+</div>
+<div class="finding">
+<h3>Promociones puntuales</h3>
+<p>Dos precios de la canasta son promocionales. Si la promoción termina, el ranking de esas presentaciones puede cambiar.</p>
+</div>
+<div class="finding">
+<h3>Disponibilidad cambiante</h3>
+<p>Un producto publicado puede agotarse. La comparación usa solo productos con precio disponible en los tres comercios.</p>
+</div>
+<div class="finding">
+<h3>La categoría se delimitó a mano</h3>
+<p>Cada sitio organiza la confitería a su manera. La equivalencia de ramas y las exclusiones están documentadas y son auditables.</p>
+</div>
+<div class="finding">
+<h3>Dos ejecuciones, misma fecha</h3>
+<p>Las dos corridas se hicieron el mismo día en horarios distintos. La estructura ya está lista para repetir en fechas diferentes.</p>
+</div>
+</div>
+
+## Reproducibilidad
+
+El informe se regenera abriendo **taller_1.Rmd** en RStudio y presionando **Knit**. La base comparador_precios.sqlite y las copias crudas raw/ ya están incluidas, así que no se necesita internet para compilarlo. Para una recolección nueva se usa scraper.R; para verificar sin conexión, verificacion_offline.R. Las versiones de los paquetes están fijadas en renv.lock.
+
+| Archivo | Para qué sirve |
+|---|---|
+| taller_1.Rmd | Genera este informe. |
+| styles.css | Estilos visuales de la presentación. |
+| consultas.sql | Las ocho consultas SQL para revisión técnica. |
+| comparador_precios.sqlite | Base con las dos ejecuciones y las 39 observaciones comparables por ejecución. |
+| raw/ | Copias crudas comprimidas de las respuestas de los tres comercios. |
+| scraper.R | Módulo de extracción, carga a SQLite y modo offline. |
+| mapeo_productos.csv | Correspondencia manual entre el SKU de cada comercio y el producto canónico. |
+| docs/categorias.md | Delimitación de la categoría y equivalencias por comercio. |
+| verificacion_offline.txt | Resultado de la prueba de reprocesamiento sin red. |
+| renv.lock | Versiones fijas de los paquetes. |
+
+<div class="callout callout-success">
+<strong>Verificación offline.</strong> La reconstrucción desde las copias crudas produjo exactamente 5.875 observaciones, 39 observaciones comparables y 13 productos, idénticos a la base incluida. La comparación por comercio también coincidió en conteos, suma de precios y disponibilidad.
+</div>
+
+<div class="divider"></div>
+
+<p class="small">Fuente: elaboración propia con datos de scraping de Éxito, Carulla y Jumbo. Precios del 05/11/2026; no son permanentes. Este informe no es una recomendación nutricional ni terapéutica.</p>
+
+```{r desconectar, include=FALSE}
 dbDisconnect(con)
-
-df_g3 <- df_g3 %>%
-  filter(id_producto_comun %in% names(nombres_canasta)) %>%
-  mutate(producto_comercial = recode(id_producto_comun, !!!nombres_canasta))
-
-hchart(df_g3, type = "bar", hcaes(x = producto_comercial, y = ahorro_porcentual)) %>%
-  hc_colors("#E74C3C") %>%
-  hc_title(text = "3. Oportunidades de Ahorro Máximo por Producto (%)") %>%
-  hc_subtitle(text = "Diferencia porcentual entre el comercio más costoso y el más económico") %>%
-  hc_xAxis(title = list(text = "Producto")) %>%
-  hc_yAxis(
-    title = list(text = "Ahorro Potencial (%)"),
-    labels = list(format = "{value}%"),
-    max = max(df_g3$ahorro_porcentual) * 1.15
-  ) %>%
-  hc_tooltip(
-    pointFormat = 'Ahorro: <b>{point.y:.1f}%</b> (${point.ahorro_absoluto_cop:,.0f} COP)<br/>Mín: ${point.precio_min:,.0f} | Máx: ${point.precio_max:,.0f}'
-  ) %>%
-  hc_plotOptions(bar = list(
-    borderRadius = 4,
-    dataLabels = list(enabled = TRUE, format = "{point.y:.1f}%")
-  )) %>%
-  hc_exporting(enabled = TRUE)
 ```
-
-* **Interpretación:** Las mayores brechas ocurren en M&M Maní (22.7%) y Chocobreak 150g (19.8%). En Ferrero Rocher y Corona 450g la dispersión es menor (5.1%), indicando alta competencia en productos tradicionales.
-
-## 6. Conclusiones para el Consumidor
-
-1. **Dónde comprar:**
-   * **Éxito:** Es la opción más conveniente para golosinas individuales e importadas (Kinder, M&M, Jet).
-   * **Jumbo:** Es el más económico para chocolates de mesa y presentaciones grandes (Corona).
-   * **Carulla:** Resulta competitivo en bolsas de dulces medianos (Chocobreak 150g) y empata en Chocobreak 250g.
-2. **Desembolso vs. Ahorro Unitario:** 
-   Elegir empaques pequeños exige menos dinero en caja, pero resulta entre 15% y 24% más costoso por gramo. Se recomienda priorizar presentaciones de 250g o más para consumo recurrente.
-3. **Condiciones de compra:** 
-   Dado que los ahorros absolutos rondan entre $1,000 y $2,500 COP, los costos de envío a domicilio pueden anular la ventaja; conviene consolidar estos productos dentro de compras familiares mayores.
-```
-

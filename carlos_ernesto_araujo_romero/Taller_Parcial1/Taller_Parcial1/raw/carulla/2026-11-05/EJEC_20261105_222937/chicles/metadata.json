@@ -1,0 +1,26 @@
+{
+  "id_ejecucion": "EJEC_20261105_222937",
+  "id_comercio": "carulla",
+  "comercio": "Carulla",
+  "rama": "Chicles",
+  "ruta": "Bebidas, snacks y dulces/Dulces y chocolates/Chicles",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-05T22:32:33-05:00",
+  "fecha_fin": "2026-11-05T22:32:34-05:00",
+  "n_reportado": 3,
+  "n_paginas": 1,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Chicles?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-05T22:32:34-05:00",
+      "n_reportado": 3,
+      "n": 3,
+      "status": 200,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "7b7826c7b8b53f7ea5e09d03c3b6d23d05b28965f156007c500084c295c71c8c"
+    }
+  ]
+}

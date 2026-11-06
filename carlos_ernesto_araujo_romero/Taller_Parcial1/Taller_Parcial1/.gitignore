@@ -1,2 +1,10 @@
 .Rproj.user/
 .Rhistory
+.RData
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+verificacion_offline.sqlite
+run*_res.rds
+run*.log
+render*.log
