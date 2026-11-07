@@ -29,17 +29,17 @@ técnico queda en `scraper.R`, `consultas.sql`, `docs/categorias.md` y este READ
 * **13 presentaciones comparables**, cada una con precio en los tres comercios:
   **39 observaciones comparables** en una misma ejecución.
 * **No hay un comercio ganador único.** En la ejecución de análisis, Jumbo aparece
-  como el más barato en 6 presentaciones (incluyendo un empate), Carulla en 4 y
-  Éxito en 4.
+  como el más barato en 5 presentaciones, Carulla en 4 y Éxito en 4.
 * **La canasta completa en un solo almacén** cuesta entre **$187.410** y
-  **$192.924**. Comprando cada producto donde está más barato, el costo baja a
-  **$178.904**: un ahorro de **$14.020 (7,3%)** frente a la canasta más costosa.
+  **$192.874**. Comprando cada producto donde está más barato, el costo baja a
+  **$178.854**: un ahorro de **$14.020 (7,3%)** frente a la canasta más costosa.
 * **La presentación grande no siempre es más barata por gramo.** En Corona
   tradicional, la barra de 200 g de Éxito es la más eficiente por 100 g; la de
   450 g no mejora ese indicador en Éxito ni en Carulla. En Millows original, la
   bolsa de 300 g sí es más eficiente que la de 75 g en los tres comercios.
-* **Dos ejecuciones completas** conservadas en la base, con identificadores y horas
-  distintas, para demostrar que el scraper no sobrescribe observaciones.
+* **Tres ejecuciones completas en dos fechas** (05/11 y 06/11) conservadas en la
+  base, con identificadores distintos, para demostrar que el scraper no
+  sobrescribe observaciones y que se pueden comparar días diferentes.
 
 > Los precios son una fotografía del momento de la consulta. No incluyen
 > domicilio, mínimos de compra, cupones, fidelización ni precios de tienda física.
@@ -155,8 +155,8 @@ equivalencia están en [`docs/categorias.md`](docs/categorias.md).
 
 | Comercio | Productos reportados por las ramas | Extraídos | Incluidos en la categoría | Con precio |
 |---|---:|---:|---:|---:|
-| Éxito | 4.624 | 4.624 | 3.024 | 714 |
-| Carulla | 2.466 | 2.466 | 2.342 | 525 |
+| Éxito | 4.626 | 4.626 | 3.026 | 716 |
+| Carulla | 2.468 | 2.468 | 2.344 | 529 |
 | Jumbo | 541 | 541 | 509 | 509 |
 
 La diferencia entre “extraídos” e “incluidos” corresponde a exclusiones
@@ -226,7 +226,7 @@ código fuente y en los archivos auxiliares.
 
 | Criterio | Peso | Evidencia |
 |---|---:|---|
-| **Selección de fuentes y scraping** | 50% | `scraper.R` con una función por comercio y una función general; 3 comercios; categoría completa (4.624 + 2.466 + 541 productos extraídos); 13 productos × 3 comercios = 39 observaciones comparables en una misma ejecución; `raw/` comprimido; modo offline probado; `robots.txt` y User-Agent documentados; dos ejecuciones conservadas. |
+| **Selección de fuentes y scraping** | 50% | `scraper.R` con una función por comercio y una función general; 3 comercios; categoría completa (4.626 + 2.468 + 541 productos extraídos); 13 productos × 3 comercios = 39 observaciones comparables en una misma ejecución; `raw/` comprimido; modo offline probado; `robots.txt` y User-Agent documentados; tres ejecuciones en dos fechas conservadas. |
 | **Construcción de la base SQLite** | 10% | `db/schema.sql`; tablas `ejecuciones`, `ejecuciones_comercio`, `ejecuciones_categoria`, `observaciones`, `productos_comparables`, `mapeo_productos`, `descartes`; `UNIQUE` de observaciones; índice único de comparables; campos obligatorios; correspondencia manual documentada. |
 | **Consultas SQL** | 15% | [`consultas.sql`](consultas.sql) y chunks ocultos del `.Rmd`: 8 preguntas, filtro por ejecución, empates con `RANK()` y `GROUP_CONCAT`, faltantes y calidad por comercio. El informe muestra las respuestas, no el código. |
 | **Documento** | 25% | Presentación visual: resumen para el consumidor, guía de compra, 8 gráficos con interpretación, 8 preguntas respondidas, limitaciones y reproducibilidad. |
@@ -245,7 +245,7 @@ disponibilidad) debe coincidir exactamente con la base original. El resultado
 está en [`verificacion_offline.txt`](verificacion_offline.txt).
 
 Además se probó una **reconstrucción desde cero en una carpeta limpia**, sin la
-base original: `ejecutar_recoleccion(offline = TRUE)` produjo 5.875
+base original: `ejecutar_recoleccion(offline = TRUE)` produjo 5.879
 observaciones, 39 observaciones comparables y 13 productos, idénticos a la base
 incluida. Esa prueba confirma que la entrega no depende de la base ya construida
 ni de una conexión a internet.
@@ -278,8 +278,8 @@ la ejecución queda `parcial` y el error se registra.
   la confitería a su manera.
 * La correspondencia de productos es manual y auditada; dos nombres comerciales
   pueden referirse a empaques ligeramente distintos.
-* Las dos ejecuciones se hicieron el mismo día en horarios distintos. La
-  estructura permite repetir en otras fechas para observar cambios.
+* Las ejecuciones se hicieron en dos fechas (05/11 y 06/11); la comparación usa
+  la más reciente. No constituyen todavía una serie continua de precios.
 * El informe no es una recomendación nutricional ni terapéutica.
 
 ---

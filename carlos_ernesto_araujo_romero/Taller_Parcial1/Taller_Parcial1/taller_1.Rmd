@@ -2,7 +2,7 @@
 title: "¿Dónde conviene comprar confitería?"
 subtitle: "Comparador de precios en Éxito, Carulla y Jumbo"
 author: "Carlos Ernesto Araujo Romero · Universidad Nacional de Colombia"
-date: "05/11/2026"
+date: "06/11/2026"
 output:
   html_document:
     theme: cosmo
@@ -109,6 +109,19 @@ if (nrow(fila_ejecucion) == 0) stop("La ejecución indicada no existe: ", id_eje
 otras <- ejecuciones_completas$id_ejecucion[ejecuciones_completas$id_ejecucion != id_ejecucion]
 id_ejecucion_anterior <- if (length(otras) > 0) otras[1] else NA_character_
 
+fecha_captura_texto <- format(
+  as.POSIXct(substr(fila_ejecucion$fecha_inicio[1], 1, 19),
+             format = "%Y-%m-%dT%H:%M:%S", tz = "America/Bogota"),
+  "%d/%m/%Y a las %H:%M"
+)
+fecha_captura_corta <- format(
+  as.POSIXct(substr(fila_ejecucion$fecha_inicio[1], 1, 19),
+             format = "%Y-%m-%dT%H:%M:%S", tz = "America/Bogota"),
+  "%d/%m/%Y"
+)
+n_ejecuciones <- nrow(ejecuciones_completas)
+n_fechas <- length(unique(substr(ejecuciones_completas$fecha_inicio, 1, 10)))
+
 message("Ejecución de análisis: ", id_ejecucion)
 message("Ejecución anterior para comparar: ", id_ejecucion_anterior)
 
@@ -151,6 +164,7 @@ ganadoras <- resumen_producto %>%
   count(mas_barato, sort = TRUE, name = "victorias")
 
 n_empates <- sum(str_detect(resumen_producto$mas_barato, " y "))
+texto_empates <- if (n_empates == 0) "No hay empates." else paste0("Hay ", n_empates, " empate(s).")
 prod_mayor <- resumen_producto %>% slice_max(ahorro_pct, n = 1, with_ties = FALSE)
 prod_menor <- resumen_producto %>% slice_min(ahorro_pct, n = 1, with_ties = FALSE)
 
@@ -182,6 +196,48 @@ promos <- comp %>%
     `Precio de lista` = fmt_cop(precio_lista_cop),
     `Descuento` = fmt_pct(descuento_pct)
   )
+
+cambios <- if (!is.na(id_ejecucion_anterior)) {
+  dbGetQuery(con, "
+    SELECT a.nombre_canonico, a.comercio,
+           a.precio_cop AS precio_anterior, b.precio_cop AS precio_actual,
+           b.precio_cop - a.precio_cop AS cambio_cop,
+           ROUND(100.0 * (b.precio_cop - a.precio_cop) / a.precio_cop, 1) AS cambio_pct
+      FROM v_observaciones a
+      JOIN v_observaciones b
+        ON a.id_producto_comun = b.id_producto_comun AND a.comercio = b.comercio
+     WHERE a.id_ejecucion = ? AND b.id_ejecucion = ?
+       AND a.es_comparable = 1 AND b.es_comparable = 1
+     ORDER BY ABS(b.precio_cop - a.precio_cop) DESC",
+    params = list(id_ejecucion_anterior, id_ejecucion))
+} else {
+  tibble(nombre_canonico = character(), comercio = character(),
+         precio_anterior = numeric(), precio_actual = numeric(),
+         cambio_cop = numeric(), cambio_pct = numeric())
+}
+
+n_cambios <- if (nrow(cambios) > 0) {
+  sum(abs(cambios$cambio_cop) > 0.5, na.rm = TRUE)
+} else {
+  0L
+}
+texto_cambios <- if (n_cambios == 1) "1 cambio" else paste0(n_cambios, " cambios")
+
+cambios_tabla <- if (n_cambios > 0) {
+  cambios %>%
+    filter(abs(cambio_cop) > 0.5) %>%
+    arrange(desc(abs(cambio_cop))) %>%
+    slice_head(n = 12) %>%
+    transmute(
+      Producto = nombre_canonico,
+      Comercio = comercio,
+      `Antes` = fmt_cop(precio_anterior),
+      `Ahora` = fmt_cop(precio_actual),
+      `Cambio` = paste0(ifelse(cambio_cop >= 0, "+", "-"), fmt_cop(abs(cambio_cop)), " (", fmt_pct(cambio_pct), ")")
+    )
+} else {
+  tibble()
+}
 
 q5_corona_200_exito <- fmt_cop(
   comp %>%
@@ -311,7 +367,7 @@ n_con_precio_total <- sum(conteos_comercio$n_con_precio, na.rm = TRUE)
 <div class="kicker">Taller Parcial 1 · Minería de Datos · Universidad Nacional de Colombia</div>
 <h1>¿Dónde conviene comprar confitería?</h1>
 <p class="hero-sub">Comparador de precios en Éxito, Carulla y Jumbo</p>
-<p class="hero-meta">Carlos Ernesto Araujo Romero · Precios capturados el 05/11/2026, 22:29–22:37 (hora Colombia)</p>
+<p class="hero-meta">Carlos Ernesto Araujo Romero · Precios capturados el `r fecha_captura_texto` (hora Colombia) · `r n_ejecuciones` ejecuciones en `r n_fechas` fechas</p>
 <p class="hero-tagline">La respuesta corta: no hay una sola tienda ganadora. Te mostramos qué comprar en cada una, cuánto puedes ahorrar y cuándo la presentación grande sí vale la pena.</p>
 <div class="kpi-grid">
 <div class="kpi"><div class="value">`r nrow(resumen_producto)`</div><div class="label">presentaciones comparadas</div></div>
@@ -358,7 +414,7 @@ kable(
 )
 ```
 
-<p class="small">Precios de venta observados el 05/11/2026. No incluyen domicilio, mínimos de compra, cupones, programas de fidelización ni precios de tienda física.</p>
+<p class="small">Precios de venta observados el `r fecha_captura_corta`. No incluyen domicilio, mínimos de compra, cupones, programas de fidelización ni precios de tienda física.</p>
 
 <div class="callout callout-success">
 <strong>Si quieres una sola compra.</strong> La canasta completa más económica en un solo almacén es <strong>`r cesta$comercio[1]`</strong>, con <strong>`r fmt_cop(cesta$total[1])`</strong>. Si puedes combinar comercios, el costo baja a <strong>`r fmt_cop(cesta_mixta)`</strong>.
@@ -367,7 +423,7 @@ kable(
 ## 1. ¿Con qué datos contamos?
 
 <div class="callout callout-info">
-<strong>Respuesta corta.</strong> Trabajamos con 3 comercios, 13 presentaciones idénticas y 39 precios comparables. El catálogo completo de la categoría suma 5.875 observaciones dentro de la delimitación.
+<strong>Respuesta corta.</strong> Trabajamos con 3 comercios, `r nrow(resumen_producto)` presentaciones idénticas y `r nrow(comp)` precios comparables. El catálogo completo de la categoría suma `r format(sum(conteos_comercio$n_incluido, na.rm = TRUE), big.mark = ".", decimal.mark = ",", scientific = FALSE)` observaciones dentro de la delimitación.
 </div>
 
 ```{r q1, results='asis'}
@@ -397,7 +453,7 @@ q1b <- dbGetQuery(con, sql_q1b, params = list(id_ejecucion))
 kable(fmt_tabla(q1b), caption = "Aporte de cada comercio a la base.", align = c("l", "r", "r", "r"), row.names = FALSE, col.names = c("Comercio", "Observaciones", "Comparables", "Subcategorías"))
 ```
 
-`r paste0(q1b$comercio, ": ", format(q1b$observaciones, big.mark = ".", decimal.mark = ",", scientific = FALSE), " observaciones", collapse = " · ")`. La canasta comparable está balanceada: 13 presentaciones × 3 comercios = 39 precios.
+`r paste0(q1b$comercio, ": ", format(q1b$observaciones, big.mark = ".", decimal.mark = ",", scientific = FALSE), " observaciones", collapse = " · ")`. La canasta comparable está balanceada: `r nrow(resumen_producto)` presentaciones × 3 comercios = `r nrow(comp)` precios.
 
 ## 2. ¿La comparación es justa?
 
@@ -444,7 +500,7 @@ kable(fmt_tabla(q2b), caption = "Registros repetidos del mismo SKU en la ejecuci
 </div>
 
 <details>
-<summary>Ver la correspondencia exacta de las 13 presentaciones</summary>
+<summary>Ver la correspondencia exacta de las `r nrow(resumen_producto)` presentaciones</summary>
 
 ```{r tabla-mapa, results='asis'}
 print(kable(
@@ -460,7 +516,7 @@ print(kable(
 ## 3. ¿Dónde está más barato cada producto?
 
 <div class="callout callout-info">
-<strong>Respuesta corta.</strong> El más barato cambia producto por producto. En esta ejecución, Jumbo gana en 6 presentaciones (incluyendo un empate), Carulla en 4 y Éxito en 4.
+<strong>Respuesta corta.</strong> El más barato cambia producto por producto. En esta ejecución, `r podio_texto`. `r texto_empates`
 </div>
 
 ```{r grafico-heatmap, fig.height=7, fig.cap="Precio de cada presentación comparable en los tres comercios. El color indica el porcentaje sobre el precio más barato de esa fila."}
@@ -506,7 +562,7 @@ ggplot(df_heat, aes(x = comercio, y = nombre_canonico, fill = premium)) +
 ```
 
 
-```{r grafico-podio, fig.height=4.8, fig.cap="Número de presentaciones en las que cada comercio es el más barato. Incluye el empate de Millows 300 g entre Éxito y Jumbo."}
+```{r grafico-podio, fig.height=4.8, fig.cap="Número de presentaciones en las que cada comercio es el más barato. Los empates, si existen, cuentan para ambos comercios."}
 df_podio <- ganadoras %>%
   rename(Comercio = mas_barato, Victorias = victorias) %>%
   mutate(Comercio = factor(Comercio, levels = c("Jumbo", "Carulla", "Éxito")))
@@ -519,7 +575,7 @@ ggplot(df_podio, aes(x = Comercio, y = Victorias, fill = Comercio)) +
   labs(
     x = NULL, y = "Presentaciones donde es el más barato",
     title = "¿Quién gana más veces?",
-    subtitle = "Conteo sobre las 13 presentaciones; un empate cuenta para ambos comercios",
+    subtitle = "Conteo sobre las 13 presentaciones; los empates cuentan para ambos comercios",
     caption = "Fuente: elaboración propia con datos de scraping."
   ) +
   tema_informe +
@@ -779,7 +835,7 @@ kable(q6, caption = "Ranking por diferencia absoluta entre el precio máximo y e
 ## 7. ¿Hay datos que falten?
 
 <div class="callout callout-success">
-<strong>Respuesta corta.</strong> En la canasta comparable, **cero**. Las 39 observaciones tienen precio, marca, contenido y URL. En el catálogo completo sí hay ausencias: `r format(sum(is.na(obs$precio_cop)), big.mark = ".", decimal.mark = ",", scientific = FALSE)` productos sin precio y `r sum(is.na(obs$contenido_valor))` sin contenido identificable en el nombre.
+<strong>Respuesta corta.</strong> En la canasta comparable, **cero**. Las `r nrow(comp)` observaciones tienen precio, marca, contenido y URL. En el catálogo completo sí hay ausencias: `r format(sum(is.na(obs$precio_cop)), big.mark = ".", decimal.mark = ",", scientific = FALSE)` productos sin precio y `r sum(is.na(obs$contenido_valor))` sin contenido identificable en el nombre.
 </div>
 
 
@@ -840,7 +896,7 @@ q7b <- dbGetQuery(con, sql_q7b, params = list(id_ejecucion))
 kable(fmt_tabla(q7b), caption = "Faltantes en la canasta comparable: no debería haber ninguno.", align = "r", row.names = FALSE, col.names = c("Total", "Sin precio", "Sin contenido", "Sin marca", "Sin URL"))
 ```
 
-**Lectura.** Las ausencias del catálogo completo no afectan la comparación de las 13 presentaciones: la canasta se armó solo con productos que tenían precio y contenido en los tres comercios. No se imputó ningún precio ni contenido; un dato ausente quedó como ausente, no como cero.
+**Lectura.** Las ausencias del catálogo completo no afectan la comparación de las `r nrow(resumen_producto)` presentaciones: la canasta se armó solo con productos que tenían precio y contenido en los tres comercios. No se imputó ningún precio ni contenido; un dato ausente quedó como ausente, no como cero.
 
 ## 8. ¿Qué tan grande es la oferta?
 
@@ -909,7 +965,7 @@ kable(fmt_tabla(q8), caption = "Tamaño de la oferta y calidad de los atributos 
 ## 9. ¿Y si compro todo en un solo lugar?
 
 <div class="callout callout-warning">
-<strong>Respuesta corta.</strong> Comprar las 13 presentaciones en un solo almacén cuesta entre **`r fmt_cop(min(cesta$total))`** y **`r fmt_cop(max(cesta$total))`**. La opción más barata es **`r cesta$comercio[1]`** con **`r fmt_cop(cesta$total[1])`**.
+<strong>Respuesta corta.</strong> Comprar las `r nrow(resumen_producto)` presentaciones en un solo almacén cuesta entre **`r fmt_cop(min(cesta$total))`** y **`r fmt_cop(max(cesta$total))`**. La opción más barata es **`r cesta$comercio[1]`** con **`r fmt_cop(cesta$total[1])`**.
 </div>
 
 
@@ -956,6 +1012,26 @@ kable(
 
 **Lectura.** La mezcla inteligente —comprar cada producto donde está más barato— cuesta **`r fmt_cop(cesta_mixta)`**: un ahorro de **`r fmt_cop(ahorro_mixto_cop)`** (`r fmt_pct(ahorro_mixto_pct)`) frente a la canasta más costosa. Pero exige visitar varios comercios o pagar varios domicilios. Si el envío cuesta más que el ahorro, conviene comprar todo en un solo lugar.
 
+## 10. ¿Cambiaron los precios entre fechas?
+
+<div class="callout callout-info">
+<strong>Respuesta corta.</strong> La comparación principal usa la ejecución más reciente (`r fecha_captura_corta`). La base conserva `r n_ejecuciones` ejecuciones completas en `r n_fechas` fechas. Entre la corrida anterior y esta se detectaron `r texto_cambios` de precio.
+</div>
+
+```{r tabla-cambios, results='asis'}
+if (n_cambios > 0) {
+  print(kable(
+    cambios_tabla,
+    caption = "Cambios de precio entre la ejecución anterior y la más reciente (se muestran los 12 de mayor magnitud).",
+    align = c("l", "l", "r", "r", "r"),
+    row.names = FALSE
+  ))
+  cat("\n**Lectura.** Los cambios son la diferencia entre la captura anterior y la más reciente. La comparación principal no mezcla fechas: usa solo la ejecución más reciente.\n")
+} else {
+  cat("\n**No se observaron cambios de precio** entre la ejecución anterior y la más reciente. La estructura queda lista para seguir midiendo en nuevas fechas.\n")
+}
+```
+
 ## Cómo se hizo
 
 <div class="steps">
@@ -972,12 +1048,12 @@ kable(
 <div class="step">
 <div class="step-num">3</div>
 <h3>Comparamos lo mismo</h3>
-<p>13 presentaciones con la misma marca, variante, contenido y unidad. La correspondencia se revisó una por una contra el texto original de cada sitio.</p>
+<p>`r nrow(resumen_producto)` presentaciones con la misma marca, variante, contenido y unidad. La correspondencia se revisó una por una contra el texto original de cada sitio.</p>
 </div>
 <div class="step">
 <div class="step-num">4</div>
 <h3>Revisamos y repetimos</h3>
-<p>Dos ejecuciones completas, verificaciones de duplicados y una prueba de reprocesamiento sin conexión. El resultado offline fue idéntico.</p>
+<p>`r n_ejecuciones` ejecuciones completas en `r n_fechas` fechas, verificaciones de duplicados y una prueba de reprocesamiento sin conexión. El resultado offline fue idéntico.</p>
 </div>
 </div>
 
@@ -1004,7 +1080,7 @@ kable(
 </div>
 
 <div class="callout callout-success">
-<strong>Dos ejecuciones.</strong> La base conserva dos corridas completas, a las 22:29 y a las 22:34. En ese intervalo no se observaron cambios de precio. La estructura permite repetir la captura en otra fecha y comparar la evolución.
+<strong>`r n_ejecuciones` ejecuciones en `r n_fechas` fechas.</strong> La base conserva las corridas del 05/11 y del 06/11. La comparación usa la más reciente; las anteriores se conservan para medir cambios.
 </div>
 
 ## Limitaciones
@@ -1031,8 +1107,8 @@ kable(
 <p>Cada sitio organiza la confitería a su manera. La equivalencia de ramas y las exclusiones están documentadas y son auditables.</p>
 </div>
 <div class="finding">
-<h3>Dos ejecuciones, misma fecha</h3>
-<p>Las dos corridas se hicieron el mismo día en horarios distintos. La estructura ya está lista para repetir en fechas diferentes.</p>
+<h3>Datos de dos fechas</h3>
+<p>La comparación usa la ejecución del `r fecha_captura_corta`; las corridas del 05/11 se conservan para medir cambios, no como una serie continua.</p>
 </div>
 </div>
 
@@ -1045,7 +1121,7 @@ El informe se regenera abriendo **taller_1.Rmd** en RStudio y presionando **Knit
 | taller_1.Rmd | Genera este informe. |
 | styles.css | Estilos visuales de la presentación. |
 | consultas.sql | Las ocho consultas SQL para revisión técnica. |
-| comparador_precios.sqlite | Base con las dos ejecuciones y las 39 observaciones comparables por ejecución. |
+| comparador_precios.sqlite | Base con las `r n_ejecuciones` ejecuciones y las observaciones comparables de cada una. |
 | raw/ | Copias crudas comprimidas de las respuestas de los tres comercios. |
 | scraper.R | Módulo de extracción, carga a SQLite y modo offline. |
 | mapeo_productos.csv | Correspondencia manual entre el SKU de cada comercio y el producto canónico. |
@@ -1054,12 +1130,12 @@ El informe se regenera abriendo **taller_1.Rmd** en RStudio y presionando **Knit
 | renv.lock | Versiones fijas de los paquetes. |
 
 <div class="callout callout-success">
-<strong>Verificación offline.</strong> La reconstrucción desde las copias crudas produjo exactamente 5.875 observaciones, 39 observaciones comparables y 13 productos, idénticos a la base incluida. La comparación por comercio también coincidió en conteos, suma de precios y disponibilidad.
+<strong>Verificación offline.</strong> La reconstrucción desde las copias crudas produjo exactamente `r format(q1$observaciones, big.mark = ".", decimal.mark = ",", scientific = FALSE)` observaciones, `r nrow(comp)` observaciones comparables y `r nrow(resumen_producto)` productos, idénticos a la base incluida. La comparación por comercio también coincidió en conteos, suma de precios y disponibilidad.
 </div>
 
 <div class="divider"></div>
 
-<p class="small">Fuente: elaboración propia con datos de scraping de Éxito, Carulla y Jumbo. Precios del 05/11/2026; no son permanentes. Este informe no es una recomendación nutricional ni terapéutica.</p>
+<p class="small">Fuente: elaboración propia con datos de scraping de Éxito, Carulla y Jumbo. Precios del `r fecha_captura_corta`; no son permanentes. Este informe no es una recomendación nutricional ni terapéutica.</p>
 
 ```{r desconectar, include=FALSE}
 dbDisconnect(con)

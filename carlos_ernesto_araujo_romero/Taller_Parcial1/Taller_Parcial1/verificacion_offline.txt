@@ -1,19 +1,19 @@
 VERIFICACIÓN DEL MODO SIN CONEXIÓN
 ===================================
-Ejecución: EJEC_20261105_223427
-Fecha de la prueba: 2026-11-05T22:38:08-05:00
+Ejecución: EJEC_20261106_193851
+Fecha de la prueba: 2026-11-06T19:44:40-05:00
 Base original: comparador_precios.sqlite
 Base reprocesada desde raw/: verificacion_offline.sqlite
 
 Comparación por comercio (conteos, suma de precios y disponibilidad):
  id_comercio n_original suma_precios_original n_disponibles_original n_offline
-     carulla       2342              12594854                    525      2342
-       exito       3024              20243223                    714      3024
-       jumbo        509               8374540                    509       509
+     carulla       2344              12692354                    529      2344
+       exito       3026              20241306                    716      3026
+       jumbo        509               8387460                    509       509
  suma_precios_offline n_disponibles_offline igual
-             12594854                   525  TRUE
-             20243223                   714  TRUE
-              8374540                   509  TRUE
+             12692354                   529  TRUE
+             20241306                   716  TRUE
+              8387460                   509  TRUE
 
 ¿Todos los comercios coinciden? SÍ
 
