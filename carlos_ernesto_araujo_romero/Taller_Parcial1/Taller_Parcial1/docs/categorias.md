@@ -54,7 +54,9 @@ equivalentes.
 
 ## 2. Equivalencia por comercio
 
-Cada sitio tiene su propio árbol. Las ramas consultadas fueron:
+Cada sitio tiene su propio árbol. Las ramas consultadas fueron las siguientes.
+Los conteos de las tablas corresponden a la ejecución del 05/11; la base conserva
+también la del 06/11, con variaciones menores en el catálogo.
 
 ### 2.1. Éxito (`www.exito.com`)
 
