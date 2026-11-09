@@ -509,3 +509,27 @@ canasta <- function(con, items, ejecucion = NULL) {
                             ahorro_pct = if (is.na(ahorro)) NA_real_ else round(100 * ahorro / costo_unico, 1)),
        advertencia = AVISO_CANASTA)
 }
+
+
+# ---------- 9. grafico 4: promociones por comercio ----------
+# Pregunta del consumidor: en que comercio hay mas productos en promocion y de que tamano es el descuento tipico?
+# productos / en_promocion: anuncios distintos del conjunto filtrado. pct_promocion: % de esos anuncios en promocion.
+# descuento_mediano_pct: mediana de (precio_lista - precio) / precio_lista * 100, solo sobre los anuncios en promocion
+# (NA si el comercio no tiene ninguno).
+promociones_por_comercio <- function(con, f = NULL) {
+  b <- construir_filtro(f)
+  desc <- estadisticos_sql(
+    sprintf("SELECT comercio, 100.0 * (precio_lista - precio) / precio_lista AS descuento
+               FROM (%s) WHERE es_promocion = 1 AND precio_lista > 0", b$fuente),
+    "descuento", "comercio", stats = "mediana")
+  consultar(con, sprintf(
+    "SELECT c.comercio, c.productos, c.en_promocion, c.pct_promocion,
+            ROUND(m.mediana, 1) AS descuento_mediano_pct
+       FROM (SELECT comercio, COUNT(DISTINCT id_anuncio) AS productos,
+                    COUNT(DISTINCT CASE WHEN es_promocion = 1 THEN id_anuncio END) AS en_promocion,
+                    ROUND(100.0 * COUNT(DISTINCT CASE WHEN es_promocion = 1 THEN id_anuncio END)
+                          / COUNT(DISTINCT id_anuncio), 1) AS pct_promocion
+               FROM (%s) GROUP BY comercio) c
+       LEFT JOIN (%s) m ON m.comercio = c.comercio
+      ORDER BY c.comercio", b$fuente, desc), c(b$params, b$params))
+}
