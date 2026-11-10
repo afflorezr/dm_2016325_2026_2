@@ -3,7 +3,7 @@
 **Asignatura:** Minería de Datos (2016325) · Universidad Nacional de Colombia
 **Lenguaje:** Python (>= 3.11) · **Aplicación:** Streamlit · **Comercios (VTEX):** Éxito, Jumbo, Olímpica
 
-> 🔗 **Aplicación publicada:** `PENDIENTE: pegar aquí el enlace de Streamlit Community Cloud (https://….streamlit.app)`
+> 🔗 **Aplicación publicada:** https://dm201632520262-gcjcmotappitr4gvkzryqn7.streamlit.app/
 >
 > Nota de despliegue: las plataformas gratuitas **no conservan los cambios en la base al reiniciarse** y los comercios suelen **bloquear el scraping desde servidores en la nube**. En la versión publicada la actualización en línea puede fallar (la aplicación lo informa con claridad y ofrece el modo sin conexión); la actualización en línea está pensada para ejecutarse en el computador local.
 
