@@ -1,0 +1,14 @@
+# Credenciales y secretos: nunca al repositorio
+.streamlit/secrets.toml
+.env
+.Renviron
+*.pem
+*.key
+# Entornos y archivos generados
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
