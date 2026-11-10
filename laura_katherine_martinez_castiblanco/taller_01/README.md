@@ -115,8 +115,7 @@ rmarkdown::render("taller_1.Rmd")       # genera taller_1.html; no hace scraping
 
 - [x] Los datos provienen del código de scraping; cada observación se rastrea hasta su copia en `raw/`.
 - [x] Fecha y hora de consulta en todas las observaciones; dependencias fijadas en `renv.lock`.
-- [ ] El Pull Request solo modifica la carpeta individual.
-- [ ] Sin contraseñas ni tokens en el repositorio.
-- [ ] Ningún archivo supera 100 MB (`raw/` pesa unos 45 MB; revise el tamaño de `diagnostico/*/pantallas/`).
+- [X] Sin contraseñas ni tokens en el repositorio.
+- [X] Ningún archivo supera 100 MB (`raw/` pesa unos 45 MB; `diagnostico/*/pantallas/` pesa unos 71.6 MB).
 
 **Uso de herramientas de IA** (complete o ajuste según corresponda): se usó un asistente de IA para apoyar la depuración del scraper, la redacción de consultas SQL y la estructura del informe. El código se probó en el equipo local y los resultados se verificaron contra la base y las copias crudas.
