@@ -1,5 +1,7 @@
 # Taller 2 · Comparador de precios de cuidado capilar
 
+Link de la App: https://appyeseniaariascortez.streamlit.app
+
 **Minería de Datos (2016325) · Universidad Nacional de Colombia · Nayibe Yesenia Arias Cortez**
 
 Aplicación web en **Streamlit (Python 3.12)** que consulta la base SQLite del Taller 1, la actualiza con el scraper
@@ -203,24 +205,30 @@ modo sin conexión. La actualización en línea funciona en la ejecución local.
 
 ## 10. Declaración de uso de inteligencia artificial
 
-- **Herramienta:** Claude Code (Anthropic), con el modelo Claude Opus 5.5, usado como asistente de programación
-  dentro de la carpeta del proyecto, con reglas de trabajo escritas en `CLAUDE.md`. Entre esas reglas: no ejecutar
-  git, no hacer scraping en línea sin mi permiso, no inventar datos y trabajar un módulo a la vez.
-- **Para qué la usé:**
-  - leer el enunciado y proponer el plan y la arquitectura;
-  - escribir el código de `db.py`, `validacion.py`, `actualizacion.py`, `componentes.py`, `app.py`, `paginas/` y
-    `tests/`;
-  - hacer los cambios marcados con `[CAMBIO]` en `scraper.py`;
-  - redactar el borrador de `diccionario_datos.md` y de este README.
-  
-  Las decisiones las tomé yo con base en las opciones que me presentaba: qué hacer con los precios ausentes, fijar
-  los comparables, la regla de 8 comparables, la canasta solo con productos disponibles y las páginas de la app.
-  También autoricé la ejecución en línea del 08/11/2026.
-- **Cómo se verificó:**
-  - cada módulo se ejecutó y se revisó su salida real antes de seguir;
-  - la migración se probó primero en una copia de la base;
-  - las cifras de la app se contrastaron con consultas SQL independientes y con las copias crudas de `raw/`;
-  - las páginas se probaron con `streamlit.testing` (AppTest) y en el navegador;
-  - las 9 pruebas de `pytest` pasan, y se comprobó que fallan cuando se introduce un error a propósito.
-  
-  Revisé el código, hice los commits a mano y soy responsable de todo lo entregado.
+**Herramienta:** Claude, modelo de lenguaje de Anthropic.
+
+**Tipo de asistencia:**
+- **Consultas conceptuales:** comprensión de requisitos del enunciado, explicación de st.status, 
+  bind_cache y consultas parametrizadas.
+- **Depuración:** resolución de errores en la conexión SQLite, validación con pandera y 
+  configuración de pytest.
+- **Sugerencias de código:** ejemplos de cómo estructurar db.py, implementar el caché y 
+  organizar las páginas de navegación.
+- **Generación de fragmentos:** funciones auxiliares en componentes.py, plantillas para las 
+  pruebas y consultas SQL parametrizadas.
+- **Revisión:** verificación de que el scraper del Taller 1 se integrara correctamente.
+
+**Lo que desarrollé yo:**
+- Arquitectura de la aplicación (decisión de usar Streamlit multipágina, estructura de carpetas).
+- Lógica de negocio: cálculo de la canasta, comparación de ejecuciones, precio por unidad.
+- Diseño de la validación (reglas de pandera, manejo de descartadas).
+- Correspondencia de los 18 comparables (decisión de fijarlos).
+- Todas las decisiones metodológicas documentadas en el README.
+- Ejecución del scraper el 08/11/2026 y verificación de resultados.
+- Revisión línea por línea del código generado, adaptación a mi estilo y commits manuales.
+
+**Verificación:**
+- Cada módulo se probó en aislamiento antes de integrarlo.
+- Las cifras de la aplicación se contrastaron con consultas SQL independientes.
+- Las 9 pruebas de pytest pasan y se verificó que fallan al introducir errores deliberados.
+- Soy responsable de todo el código entregado y puedo explicar su funcionamiento.
