@@ -152,4 +152,92 @@ server <- function(input, output, session) {
       hc_tooltip(pointFormat = "{point.tooltip}") |>
       hc_legend(enabled = FALSE)
   })
+  
+  observe({
+    ej <- opc()$ejecuciones
+    comp <- ej$codigo_corrida[ej$estado == "completa"]          # las completas, de la más reciente a la más antigua
+    etiquetas <- setNames(ej$codigo_corrida,
+                          paste0(sub("T", " ", substr(ej$fecha_hora_inicio, 1, 16)), " · ", ej$estado))
+    updateSelectInput(session, "ej_a", choices = etiquetas, selected = comp[2])
+    updateSelectInput(session, "ej_b", choices = etiquetas, selected = comp[1])
+    updateSelectInput(session, "canasta_ej", choices = etiquetas, selected = comp[1])
+    updateSelectizeInput(session, "canasta_prod",
+                         choices = setNames(opc()$productos$id_producto, opc()$productos$producto))
+  })
+  
+  cambios <- reactive({
+    req(input$ej_a, input$ej_b)
+    tryCatch(cambios_entre(con, input$ej_a, input$ej_b, input$umbral),
+             error_validacion = function(e) validate(need(FALSE, conditionMessage(e))))
+  })
+  
+  output$resumen_cambios <- renderText({
+    s <- table(factor(cambios()$situacion,
+                      levels = c("sube", "baja", "igual", "nuevo", "no_observado", "agotado_segun_sitio")))
+    paste0(s[["sube"]], " suben · ", s[["baja"]], " bajan · ", s[["igual"]], " iguales · ",
+           s[["nuevo"]], " nuevos · ", s[["no_observado"]] + s[["agotado_segun_sitio"]], " no observados")
+  })
+  
+  output$t_cambios <- renderDT({
+    tab  <- cambios()
+    cols <- c("comercio", "nombre", "precio_a", "precio_b", "variacion_cop", "variacion_pct", "situacion", "supera_umbral")
+    datatable(tab[, cols], rownames = FALSE,
+              colnames = c("Comercio", "Producto", "Precio A (COP)", "Precio B (COP)", "Variación (COP)",
+                           "Variación (%)", "Situación", "Supera umbral"),
+              options = list(pageLength = 15, columnDefs = list(list(visible = FALSE, targets = 7)))) |>
+      formatCurrency(c("precio_a", "precio_b", "variacion_cop"), currency = "$ ", interval = 3,
+                     mark = ".", dec.mark = ",", digits = 0) |>
+      formatStyle("variacion_pct", valueColumns = "supera_umbral",
+                  backgroundColor = styleEqual(1, "#FFF3CD"), fontWeight = styleEqual(1, "bold"))
+  })
+  
+  output$canasta_cantidades <- renderUI({
+    req(input$canasta_prod)
+    nombres <- setNames(opc()$productos$producto, opc()$productos$id_producto)
+    tagList(lapply(input$canasta_prod, function(id) {
+      previo <- isolate(input[[paste0("cant_", id)]])
+      numericInput(paste0("cant_", id), paste("Cantidad:", nombres[[id]]),
+                   value = if (is.null(previo)) 1 else previo, min = 1, max = 99, step = 1)
+    }))
+  })
+  
+  items <- reactive({
+    req(input$canasta_prod)
+    cant <- lapply(input$canasta_prod, function(id) input[[paste0("cant_", id)]])
+    req(!any(sapply(cant, is.null)))
+    data.frame(id_producto = as.integer(input$canasta_prod), cantidad = unlist(cant))
+  })
+  
+  canasta_res <- reactive({
+    req(input$canasta_ej)
+    tryCatch(canasta(con, items(), input$canasta_ej),
+             error_validacion = function(e) validate(need(FALSE, conditionMessage(e))))
+  })
+  
+  output$t_canasta <- renderTable({
+    t <- canasta_res()$totales
+    data.frame(Comercio = t$comercio,
+               `Costo total (COP)` = ifelse(t$completa == 1, formato_cop(t$costo),
+                                            paste("No disponible. Falta:", t$faltantes)),
+               check.names = FALSE)
+  }, spacing = "xs", striped = TRUE)
+  
+  output$t_optima <- renderTable({
+    o <- canasta_res()$compra_optima
+    data.frame(Producto = o$producto, Cantidad = o$cantidad, `Comprar en` = o$comercio,
+               `Precio unitario (COP)` = formato_cop(o$precio_unitario),
+               `Subtotal (COP)` = formato_cop(o$subtotal), check.names = FALSE)
+  }, spacing = "xs", striped = TRUE)
+  
+  output$res_canasta <- renderText({
+    r <- canasta_res()$resumen
+    if (is.na(r$costo_minimo_combinado)) return("Algún producto no está disponible en ningún comercio en esta ejecución.")
+    txt <- paste0("Costo mínimo combinado: ", formato_cop(r$costo_minimo_combinado), " COP.")
+    if (is.na(r$ahorro_cop)) paste(txt, "Ningún comercio tiene toda la canasta.")
+    else paste0(txt, " Ahorro frente a comprar todo en ", r$mejor_comercio_unico, ": ",
+                formato_cop(r$ahorro_cop), " COP (", r$ahorro_pct, " %).")
+  })
+  
+  output$aviso_canasta <- renderText(
+    paste0(canasta_res()$advertencia, " Precios de la ejecución del ", substr(canasta_res()$ejecucion$fecha, 1, 10), "."))
 }

@@ -53,5 +53,19 @@
               card(card_header("¿Dónde hay más productos en promoción? (% de productos)"),
                    highchartOutput("g_promos", height = "380px"))
     ),
+    nav_panel("Cambios",
+                layout_columns(fill = FALSE, col_widths = c(4, 4, 4),
+                               selectInput("ej_a", "Ejecución anterior (A)", choices = NULL),
+                               selectInput("ej_b", "Ejecución reciente (B)", choices = NULL),
+                               numericInput("umbral", "Resaltar variaciones de al menos (%)", value = 10, min = 0, max = 1000)),
+                p(class = "text-muted", "Variación = precio en B menos precio en A, sobre el mismo producto y comercio. Precios en COP."),
+                textOutput("resumen_cambios"),
+                DTOutput("t_cambios")),
+    nav_panel("Canasta",
+              selectizeInput("canasta_prod", "Productos de la canasta", choices = NULL, multiple = TRUE),
+              uiOutput("canasta_cantidades"),
+              selectInput("canasta_ej", "Ejecución", choices = NULL),
+              tableOutput("t_canasta"), tableOutput("t_optima"),
+              textOutput("res_canasta"), p(class = "text-muted", textOutput("aviso_canasta"))),
     nav_panel("Tabla", DTOutput("tabla"))
   )
