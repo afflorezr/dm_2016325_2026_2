@@ -1,0 +1,45 @@
+{
+  "ejecucion": "20261109T184812_bf932294",
+  "comercio": "colsubsidio",
+  "inicio": "2026-11-09T18:48:12-05:00",
+  "estado": "completa",
+  "categorias": [
+    {
+      "categoria": "5/521/52129",
+      "esperados": 108,
+      "obtenidos": 108,
+      "estado": "completa",
+      "paginas": [
+        "5-521-52129_0000.json.gz",
+        "5-521-52129_0050.json.gz",
+        "5-521-52129_0100.json.gz"
+      ],
+      "error": null
+    },
+    {
+      "categoria": "5/521/52130",
+      "esperados": 43,
+      "obtenidos": 43,
+      "estado": "completa",
+      "paginas": [
+        "5-521-52130_0000.json.gz"
+      ],
+      "error": null
+    },
+    {
+      "categoria": "5/521/52132",
+      "esperados": 26,
+      "obtenidos": 26,
+      "estado": "completa",
+      "paginas": [
+        "5-521-52132_0000.json.gz"
+      ],
+      "error": null
+    }
+  ],
+  "auxiliares": [
+    "categorias.json.gz",
+    "robots.txt.gz"
+  ],
+  "fin": "2026-11-09T18:48:20-05:00"
+}
