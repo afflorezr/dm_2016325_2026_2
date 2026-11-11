@@ -1,0 +1,25 @@
+# Credenciales y configuración local (nunca al repositorio)
+.Renviron
+.Rprofile.local
+.streamlit/secrets.toml
+rsconnect/
+*.dcf
+
+# Sesión de R
+.Rhistory
+.RData
+.Rproj.user/
+
+# renv: solo se versiona renv.lock (y renv/activate.R, settings.json)
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+# Archivos temporales de SQLite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
