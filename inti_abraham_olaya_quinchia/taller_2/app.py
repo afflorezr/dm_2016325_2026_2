@@ -34,5 +34,9 @@ def boton_actualizar():
 
 boton_actualizar()
 
-pagina = st.navigation([st.Page("paginas/resumen.py", title="Resumen", default=True)])
+pagina = st.navigation([
+    st.Page("paginas/resumen.py", title="Resumen", default=True),
+    st.Page("paginas/cambios.py", title="Cambios de precio"),
+    st.Page("paginas/canasta.py", title="Canasta"),
+])
 pagina.run()

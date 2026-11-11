@@ -287,3 +287,70 @@ def obtener_productos_comparables(con):
     return _df(con, """SELECT DISTINCT producto_id, marca, producto, contenido_normalizado AS contenido,
                               unidad_normalizada AS unidad
                          FROM v_comparables ORDER BY marca, producto""")
+
+
+# ----------------------------------------------------------------------------
+# 5. Ejecuciones, cambios de precio y precios para la canasta
+# ----------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def obtener_ejecuciones(con):
+    """Ejecuciones con datos (no fallidas), de la más reciente a la más antigua."""
+    return _df(con, """SELECT corrida_id, MIN(inicio) AS fecha,
+                              GROUP_CONCAT(comercio || ': ' || estado, ' | ') AS estados
+                         FROM ejecuciones WHERE estado <> 'fallida'
+                        GROUP BY corrida_id ORDER BY fecha DESC""")
+
+
+@st.cache_data(show_spinner=False)
+def obtener_cambios(con, corrida_antes, corrida_despues, comercios=None):
+    """
+    Compara el MISMO anuncio en el MISMO comercio entre dos ejecuciones.
+    Solo entran comercios con ejecución válida en ambas (si no, todo saldría 'nuevo' sin ser cierto).
+    estado: subió, bajó, igual, nuevo, no observado (no apareció; NO significa agotado),
+            agotado (el sitio lo marca agotado), sin precio, sin precio anterior.
+    """
+    extra, p_extra = "", []
+    vals = _lista(comercios)
+    if vals:
+        extra = f" AND c.nombre IN ({','.join('?' * len(vals))})"
+        p_extra = vals
+    ultima = """SELECT anuncio_id, precio_cop, disponibilidad, fecha_consulta FROM (
+                  SELECT o.anuncio_id, o.precio_cop, o.disponibilidad, o.fecha_consulta,
+                         ROW_NUMBER() OVER (PARTITION BY o.anuncio_id
+                                            ORDER BY o.fecha_consulta DESC, o.id DESC) AS rn
+                    FROM observaciones o JOIN ejecuciones e ON e.id = o.ejecucion_id
+                   WHERE e.corrida_id = ?) WHERE rn = 1"""
+    valida = """c.nombre IN (SELECT comercio FROM ejecuciones WHERE corrida_id = ? AND estado <> 'fallida')"""
+    sql = f"""
+        WITH a AS ({ultima}), b AS ({ultima})
+        SELECT c.nombre AS comercio, an.id AS anuncio_id, an.nombre_estandar AS nombre,
+               an.marca_estandar AS marca, an.url,
+               a.precio_cop AS precio_antes, b.precio_cop AS precio_despues,
+               b.precio_cop - a.precio_cop AS diferencia_cop,
+               100.0 * (b.precio_cop - a.precio_cop) / NULLIF(a.precio_cop, 0) AS diferencia_pct,
+               CASE WHEN a.anuncio_id IS NULL THEN 'nuevo'
+                    WHEN b.anuncio_id IS NULL THEN 'no observado'
+                    WHEN b.precio_cop IS NULL THEN
+                         CASE WHEN b.disponibilidad = 'agotado' THEN 'agotado' ELSE 'sin precio' END
+                    WHEN a.precio_cop IS NULL THEN 'sin precio anterior'
+                    WHEN b.precio_cop > a.precio_cop THEN 'subió'
+                    WHEN b.precio_cop < a.precio_cop THEN 'bajó' ELSE 'igual' END AS estado
+          FROM anuncios an JOIN comercios c ON c.id = an.comercio_id
+          LEFT JOIN a ON a.anuncio_id = an.id LEFT JOIN b ON b.anuncio_id = an.id
+         WHERE an.excluido = 0 AND (a.anuncio_id IS NOT NULL OR b.anuncio_id IS NOT NULL)
+           AND {valida} AND {valida}{extra}
+         ORDER BY ABS(COALESCE(100.0 * (b.precio_cop - a.precio_cop) / NULLIF(a.precio_cop, 0), 0)) DESC"""
+    return _df(con, sql, [corrida_antes, corrida_despues, corrida_antes, corrida_despues, *p_extra])
+
+
+@st.cache_data(show_spinner=False)
+def obtener_precios_canasta(con, corrida_id):
+    """Precio de cada producto comparable en cada comercio, de UNA misma ejecución.
+    Si un comercio tiene varios anuncios del mismo producto se toma el más barato.
+    Los precios NULL (agotado / no extraído) no entran: cuentan como producto ausente."""
+    return _df(con, """SELECT producto_id, MAX(marca) AS marca, MAX(producto) AS producto,
+                              MAX(contenido_normalizado) AS contenido, MAX(unidad_normalizada) AS unidad,
+                              comercio, MIN(precio) AS precio
+                         FROM v_comparables
+                        WHERE corrida_id = ? AND precio IS NOT NULL
+                        GROUP BY producto_id, comercio""", [str(corrida_id)[:60]])
