@@ -21,19 +21,18 @@ import db
 import scraper
 import validacion
 
-# [CAMBIO]: el enunciado (§3.3) exige al menos 8 productos comparables por comercio en cada ejecución. Una ejecución
-# que obtuvo toda la categoría que reporta el sitio sigue siendo 'completa' si tiene 8 o más de los 18 comparables;
-# los que falten quedan anotados. Con menos de 8, la ejecución del comercio queda 'parcial' (decisión 2026-11-08).
-MINIMO_COMPARABLES = 8
 
 
-# [CAMBIO]: ejecuciones que tienen copias crudas en raw/ (las que se pueden reprocesar sin conexión), de la más
+MINIMO_COMPARABLES = 8 # Nos lo pide el profe
+
+
+# Ejecuciones que tienen copias crudas en raw (las que se pueden reprocesar sin conexión), de la más
 # reciente a la más antigua. Lee solo nombres de carpetas; no hace peticiones.
 def ejecuciones_en_raw(raw_dir: Path = scraper.RAW_DIR) -> list[str]:
     return sorted({p.parent.name for p in Path(raw_dir).glob("*/*/*/manifiesto.json")}, reverse=True)
 
 
-# [CAMBIO]: id para una actualización: uno nuevo (en línea) o el elegido de raw/ (sin conexión).
+# id para una actualización: uno nuevo (en línea) o el elegido de raw/ (para sin conexión).
 def preparar_id_ejecucion(offline: bool, id_ejecucion: str | None = None, raw_dir: Path = scraper.RAW_DIR) -> str:
     if not offline:
         return scraper.nuevo_id_ejecucion()
@@ -46,7 +45,7 @@ def preparar_id_ejecucion(offline: bool, id_ejecucion: str | None = None, raw_di
     return id_ejecucion
 
 
-# [CAMBIO]: paso previo de toda actualización: asegura la estructura del Taller 2 (no hace nada si ya está) y
+# Paso previo de toda actualización:(no hace nada si ya está) y
 # devuelve el id de ejecución que se usará para los tres comercios.
 def iniciar_actualizacion(offline: bool, id_ejecucion: str | None = None, db_path: Path = db.DB_PATH,
                           raw_dir: Path = scraper.RAW_DIR) -> str:
@@ -54,13 +53,13 @@ def iniciar_actualizacion(offline: bool, id_ejecucion: str | None = None, db_pat
     return preparar_id_ejecucion(offline, id_ejecucion, raw_dir)
 
 
-# [CAMBIO]: añade un texto a la nota de la ejecución sin perder lo que ya traía.
+# Añade un texto a la nota de la ejecución sin perder lo que ya traía.
 def _agregar_nota(ejecucion: dict, texto: str) -> None:
     ejecucion["nota"] = " | ".join(x for x in [ejecucion.get("nota"), texto] if x)
 
 
-# [CAMBIO]: actualiza UN comercio y devuelve su fila de resumen (§4.5). Nunca lanza excepciones: si algo falla,
-# la ejecución del comercio queda 'fallida' con el motivo y se sigue con el siguiente comercio (§4.4).
+# Actualiza UN comercio y devuelve su fila de resumen. Nunca lanza excepciones: si algo falla,
+# la ejecución del comercio queda 'fallida' con el motivo y se sigue con el siguiente comercio (4.4).
 def actualizar_comercio(comercio: str, id_ejecucion: str, offline: bool,
                         db_path: Path = db.DB_PATH, raw_dir: Path = scraper.RAW_DIR) -> dict:
     nombre = scraper.COMERCIOS[comercio]["nombre"]
@@ -106,7 +105,7 @@ def actualizar_comercio(comercio: str, id_ejecucion: str, offline: bool,
             "motivo": ejecucion["nota"]}
 
 
-# [CAMBIO]: actualiza los tres comercios, uno tras otro. `avisar` recibe un mensaje antes de cada comercio (la
+# Actualiza los tres comercios, uno tras otro. `avisar` recibe un mensaje antes de cada comercio (la
 # app lo usa para escribir en st.status; en la terminal es print). Devuelve el resumen como tabla.
 def actualizar_todo(offline: bool = False, id_ejecucion: str | None = None, db_path: Path = db.DB_PATH,
                     raw_dir: Path = scraper.RAW_DIR, avisar=print) -> pd.DataFrame:

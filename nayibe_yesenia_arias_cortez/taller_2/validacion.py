@@ -17,13 +17,13 @@ import pandera.pandas as pa
 
 import scraper
 
-# [CAMBIO]: columnas de texto que exige el esquema (las demás columnas del scraper pasan sin revisar).
+# Columnas de texto que exige el esquema (las demás columnas del scraper pasan sin revisar).
 COLUMNAS_TEXTO = ["comercio", "sku_comercio", "id_ejecucion", "url", "fecha_hora_consulta"]
 COLUMNAS_RECHAZO = ["id_ejecucion", "id_comercio", "sku_comercio", "fecha_hora_consulta", "url", "precio",
                     "regla", "motivo"]
 
 
-# [CAMBIO]: convierte un precio en texto ("$ 12.900", "12.900,50", "COP 8900") o número a float.
+# Convierte un precio en texto ("$ 12.900", "12.900,50", "COP 8900").
 # Si no hay un número legible devuelve None: el dato ausente queda ausente, nunca se inventa.
 def precio_a_numero(valor) -> float | None:
     if valor is None or isinstance(valor, bool):
@@ -43,7 +43,7 @@ def precio_a_numero(valor) -> float | None:
         return None
 
 
-# [CAMBIO]: reglas R1-R3 en un esquema de pandera (una revisión por fila).
+# Reglas R1-R3 en un esquema de pandera (una revisión por fila).
 ESQUEMA_OBSERVACIONES = pa.DataFrameSchema(
     {
         "comercio": pa.Column(str, pa.Check.isin(list(scraper.COMERCIOS)), nullable=False),
@@ -60,7 +60,7 @@ ESQUEMA_OBSERVACIONES = pa.DataFrameSchema(
 )
 
 
-# [CAMBIO]: traduce una falla de pandera a una regla corta y un motivo en español para la tabla `rechazos`.
+# Traduce una falla de pandera a una regla corta y un motivo en español para la tabla `rechazos`.
 def _regla_y_motivo(columna, revision: str) -> tuple[str, str]:
     if "uniqueness" in revision:
         return "duplicado_en_ejecucion", "Observación repetida (mismo comercio y SKU) en la misma ejecución"
@@ -73,7 +73,7 @@ def _regla_y_motivo(columna, revision: str) -> tuple[str, str]:
     return "formato_invalido", f"El campo '{columna}' no cumple la regla {revision}"
 
 
-# [CAMBIO]: prepara los tipos antes de validar: precio a número y columnas de texto como texto (los ausentes
+# Prepara los tipos antes de validar: precio a número y columnas de texto como texto (los ausentes
 # siguen ausentes).
 def _preparar(df: pd.DataFrame) -> pd.DataFrame:
     datos = df.reset_index(drop=True).copy()
@@ -83,7 +83,7 @@ def _preparar(df: pd.DataFrame) -> pd.DataFrame:
     return datos
 
 
-# [CAMBIO]: aplica R1-R3. Devuelve (validas, rechazadas): las válidas se pueden insertar; las rechazadas traen una
+# Aplica R1-R3. Devuelve (validas, rechazadas): las válidas se pueden insertar; las rechazadas traen una
 # fila por cada regla incumplida, con las columnas de la tabla `rechazos`.
 def validar_observaciones(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     datos = _preparar(df)
@@ -110,7 +110,7 @@ def validar_observaciones(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     return validas, rechazadas
 
 
-# [CAMBIO]: R4. Revisa con pandera que todos los SKU comparables esperados de un comercio estén entre las filas
+# R4. Revisa con pandera que todos los SKU comparables esperados de un comercio estén entre las filas
 # válidas. Devuelve la lista de los que faltan (vacía si están todos). No rechaza filas: si falta alguno, la
 # ejecución de ese comercio se registra como 'parcial' con el aviso (decisión del Paso 1).
 def comparables_faltantes(validas: pd.DataFrame, esperados: set[str]) -> list[str]:

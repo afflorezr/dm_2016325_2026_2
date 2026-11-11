@@ -546,6 +546,19 @@ def resumen_por_comercio(filtros: dict | None = None, db_path: Path = DB_PATH) -
         FROM ({base}) GROUP BY id_comercio, comercio ORDER BY comercio""", params, db_path)
 
 
+# [CAMBIO]: totales con los filtros aplicados (una fila): productos distintos, observaciones, % en promoción y
+# precio promedio (COP). Alimenta las tarjetas de la página Resumen.
+def indicadores_generales(filtros: dict | None = None, db_path: Path = DB_PATH) -> pd.DataFrame:
+    base, params = _filtrar(filtros)
+    return _consultar(f"""
+        SELECT COUNT(DISTINCT id_comercio || '/' || sku_comercio) AS n_productos,
+               COUNT(*) AS n_observaciones,
+               ROUND(100.0 * AVG(es_promocion), 1) AS pct_promocion,
+               AVG(precio) AS precio_promedio,
+               MIN(fecha_hora_consulta) AS desde, MAX(fecha_hora_consulta) AS hasta
+        FROM ({base})""", params, db_path)
+
+
 # [CAMBIO]: fecha, hora y estado de la última ejecución de cada comercio.
 def ultima_ejecucion(db_path: Path = DB_PATH) -> pd.DataFrame:
     return _consultar("""
