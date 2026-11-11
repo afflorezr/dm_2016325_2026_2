@@ -15,7 +15,7 @@ def calcular_canasta(precios, cantidades):
     cantidades: {producto_id: cantidad}; las cantidades <= 0 se ignoran.
 
     Devuelve:
-      totales            - por comercio: costo (None si le falta algún producto), faltantes, completo
+      totales            - por comercio: costo (vacío -NaN- si le falta algún producto), faltantes, completo
       ideal              - por producto: comercio más barato, precio, cantidad y subtotal (None si algún
                            producto no tiene precio en ningún comercio)
       costo_ideal        - suma de la canasta ideal (None si no se puede calcular)
@@ -53,3 +53,18 @@ def calcular_canasta(precios, cantidades):
         ahorro = comp[["comercio", "costo", "ahorro_cop", "ahorro_pct"]]
     return {"totales": totales, "ideal": ideal, "costo_ideal": costo_ideal,
             "ahorro_vs_completos": ahorro, "sin_precio": sin_precio}
+
+
+def calcular_ahorro(precios_por_comercio):
+    """
+    Ahorro de elegir la oferta más barata de UNA misma presentación.
+    precios_por_comercio: {comercio: precio}; se ignoran precios ausentes (None/NaN) o <= 0.
+    Devuelve dict con pmin, pmax, ahorro_cop = Pmax - Pmin, ahorro_pct = 100 * (Pmax - Pmin) / Pmax y
+    comercios_minimos (todos los empatados en el mínimo), o None si no hay precios válidos.
+    """
+    validos = {c: float(p) for c, p in precios_por_comercio.items() if p is not None and pd.notna(p) and p > 0}
+    if not validos:
+        return None
+    pmin, pmax = min(validos.values()), max(validos.values())
+    return {"pmin": pmin, "pmax": pmax, "ahorro_cop": pmax - pmin, "ahorro_pct": 100.0 * (pmax - pmin) / pmax,
+            "comercios_minimos": sorted(c for c, p in validos.items() if p == pmin)}

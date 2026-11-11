@@ -77,6 +77,24 @@ def norm(s):
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9., ]", " ", s.lower())).strip()
 
 
+def limpiar_precio(texto):
+    """Convierte un precio en texto a número: '$ 12.900' -> 12900 (punto = miles, coma = decimales).
+    Devuelve None si no hay ningún número (un precio ausente nunca se vuelve 0)."""
+    if texto is None:
+        return None
+    if isinstance(texto, (int, float)):
+        return int(texto) if float(texto).is_integer() else float(texto)
+    t = re.sub(r"[^\d.,]", "", str(texto))
+    if not re.search(r"\d", t):
+        return None
+    if "," in t:
+        t = t.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(\.\d{3})+", t):
+        t = t.replace(".", "")
+    v = float(t)
+    return int(v) if v.is_integer() else v
+
+
 def _get(url, params=None, reintentos=4):
     ultimo = None
     for i in range(reintentos):

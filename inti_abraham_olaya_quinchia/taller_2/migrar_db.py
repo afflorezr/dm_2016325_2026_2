@@ -235,11 +235,9 @@ def _ejecutar_script(con, script):
             sentencia, en_trigger = [], False
 
 
-def migrar(db_path=DB_PATH):
-    """Aplica la migración completa de forma atómica e idempotente."""
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f"No existe la base: {db_path}")
-    con = sqlite3.connect(db_path, isolation_level=None)   # transacción manejada a mano
+def aplicar_migracion(con):
+    """Aplica la migración sobre una conexión abierta (atómica e idempotente)."""
+    con.isolation_level = None   # transacción manejada a mano
     try:
         con.execute("BEGIN")
 
@@ -299,6 +297,15 @@ def migrar(db_path=DB_PATH):
         if con.in_transaction:
             con.execute("ROLLBACK")
         raise
+
+
+def migrar(db_path=DB_PATH):
+    """Aplica la migración completa a un archivo .sqlite."""
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"No existe la base: {db_path}")
+    con = sqlite3.connect(db_path)
+    try:
+        aplicar_migracion(con)
     finally:
         con.close()
 
