@@ -1,0 +1,35 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Testing and environments
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# R remnants
+.Rhistory
+.RData
+.Rproj.user/
+
+# Temporary files and certificates generated dynamically
+*.tmp
+*.log
+ca_bundle.pem
+custom_ca_bundle.pem
+jumbo_bundle.pem
+combined_bundle.pem
+certs/combined_bundle.pem
+
+# Note: raw/, graficos/ and comparador_precios.sqlite are preserved for reproducibility.

@@ -1,0 +1,56 @@
+{
+  "ejecucion_id": "EXEC_20261028_201829_06c93c_JUMBO",
+  "fecha_hora_captura": "2026-10-28T20:20:29-05:00",
+  "total_sitio": 894,
+  "total_obtenido_bruto": 894,
+  "subcategorias": {
+    "detergentes": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/detergentes",
+      "total_sitio": 153,
+      "items_obtenidos": 153,
+      "timestamp": "2026-10-28T20:20:01-05:00"
+    },
+    "lavalozas-y-lavaplatos": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/lavalozas-y-lavaplatos",
+      "total_sitio": 75,
+      "items_obtenidos": 75,
+      "timestamp": "2026-10-28T20:20:06-05:00"
+    },
+    "limpiadores-multiusos": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/limpiadores-multiusos",
+      "total_sitio": 219,
+      "items_obtenidos": 219,
+      "timestamp": "2026-10-28T20:20:10-05:00"
+    },
+    "limpiadores-de-bano": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/limpiadores-de-bano",
+      "total_sitio": 39,
+      "items_obtenidos": 39,
+      "timestamp": "2026-10-28T20:20:16-05:00"
+    },
+    "desinfectantes": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/desinfectantes",
+      "total_sitio": 80,
+      "items_obtenidos": 80,
+      "timestamp": "2026-10-28T20:20:18-05:00"
+    },
+    "ambientadores": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/ambientadores",
+      "total_sitio": 155,
+      "items_obtenidos": 155,
+      "timestamp": "2026-10-28T20:20:20-05:00"
+    },
+    "ceras-y-limpiadores-para-pisos": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/ceras-y-limpiadores-para-pisos",
+      "total_sitio": 28,
+      "items_obtenidos": 28,
+      "timestamp": "2026-10-28T20:20:24-05:00"
+    },
+    "implementos-de-aseo": {
+      "url": "https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/supermercado/aseo-de-hogar/implementos-de-aseo",
+      "total_sitio": 150,
+      "items_obtenidos": 150,
+      "timestamp": "2026-10-28T20:20:25-05:00"
+    }
+  }
+}

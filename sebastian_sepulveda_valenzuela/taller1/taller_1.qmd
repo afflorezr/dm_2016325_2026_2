@@ -1,0 +1,878 @@
+---
+title: "Taller 1: Comparador de Precios con Web Scraping y SQLite"
+subtitle: "Minería de Datos (2016325) - Universidad Nacional de Colombia"
+author: "Sebastián Sepúlveda Valenzuela"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    theme: cosmo
+    code-fold: show
+    code-tools: true
+    embed-resources: true
+jupyter: python3
+---
+
+## 1. Introducción y Contexto
+
+El presente documento constituye la entrega del **Taller 1 de Minería de Datos**. El objetivo central es construir un comparador de precios riguroso, reproducible y auditable mediante **web scraping**, almacenamiento estructurado en **SQLite**, análisis cuantitativo con **consultas SQL** y **visualización de datos** orientada a la toma de decisiones informada del consumidor.
+
+### 1.1 Delimitación Oficial de la Categoría
+De acuerdo con la planilla oficial de asignación de categorías del curso, la categoría evaluada es **Cuidado y Limpieza del Hogar**:
+
+- **Productos incluidos:**
+  - Detergentes para ropa (en polvo y líquidos).
+  - Lavalozas y lavaplatos (líquidos y en crema).
+  - Limpiadores multiusos y para pisos (líquidos y desengrasantes).
+  - Desinfectantes de superficies y blanqueadores (cloros y geles desinfectantes).
+  - Ambientadores y aromatizantes de ambiente.
+  - Bolsas de basura y residuos para el hogar.
+  - Esponjas, fibras y esponjillas de limpieza.
+- **Productos excluidos:**
+  - Papelería e higiene personal (papel higiénico, toallas de papel de cocina y servilletas).
+  - Suavizantes textiles para ropa.
+  - Insecticidas, repelentes y plaguicidas.
+  - Betunes y cremas para calzado.
+  - Productos de jardinería y abonos.
+  - Carbón vegetal, velas y fósforos.
+
+### 1.2 Comercios Seleccionados
+Se seleccionaron tres comercios con venta en línea activa y cobertura nacional en Colombia:
+1. **Supertiendas Olímpica** (`https://www.olimpica.com`)
+2. **Tiendas Jumbo - Cencosud** (`https://www.tiendasjumbo.co`)
+3. **Almacenes Éxito** (`https://www.exito.com`)
+
+---
+
+## 2. Fuentes y Estrategia de Extracción (Web Scraping)
+
+### 2.1 Identificación Técnica de Endpoints Internos
+Mediante la inspección del tráfico de red (DevTools > Network > XHR/Fetch) en los portales de comercio electrónico, se determinó que los tres comercios operan sobre la arquitectura tecnológica de **VTEX**:
+
+- **Olímpica (VTEX Tradicional):** Catálogo indexado expuesto en `https://www.olimpica.com/api/catalog_system/pub/products/search/`.
+- **Jumbo (VTEX Tradicional):** Catálogo indexado expuesto en `https://www.tiendasjumbo.co/api/catalog_system/pub/products/search/`.
+- **Éxito (VTEX FastStore / IO):** Catálogo expuesto mediante el router FastStore en `https://www.exito.com/io/api/catalog_system/pub/products/search/`.
+
+#### Estrategia para evitar el límite técnico de paginación de VTEX
+Las APIs de catálogo de VTEX imponen una restricción estructural: consultas con parámetros `_from` y `_to` que superan aproximadamente 2,500 productos devuelven resultados vacíos o errores `400 Bad Request`. Para garantizar la extracción exhaustiva de la oferta real sin truncamientos arbitrarios, el scraper fue diseñado para consultar individualmente cada **subcategoría homologada**, cuya cardinalidad oscila entre 28 y 2,000 productos.
+
+### 2.2 Taxonomía y Categorías Homologadas
+
+```{python}
+import pandas as pd
+import scraper
+
+# Resumen de subcategorías incluidas por comercio
+taxonomia_resumen = []
+for comercio, info in scraper.CATEGORIAS_EQUIVALENTES.items():
+    for inc in info["incluidas"]:
+        taxonomia_resumen.append({
+            "Comercio": comercio,
+            "Tipo": "Incluida",
+            "Subcategoría": inc["nombre"],
+            "Motivo / Alcance": inc["motivo"]
+        })
+    for exc in info["excluidas"]:
+        taxonomia_resumen.append({
+            "Comercio": comercio,
+            "Tipo": "Excluida",
+            "Subcategoría": exc["nombre"],
+            "Motivo / Alcance": exc["motivo"]
+        })
+
+df_taxonomia = pd.DataFrame(taxonomia_resumen)
+df_taxonomia.head(12)
+```
+
+### 2.3 Revisión de Términos de Uso y `robots.txt`
+Se descargaron y almacenaron las copias oficiales de los archivos `robots.txt` de cada comercio en `raw/robots/`:
+
+```{python}
+import os
+
+robots_info = []
+for cname in ["Olimpica", "Jumbo", "Exito"]:
+    rpath = f"raw/robots/{cname}_robots.txt"
+    if os.path.exists(rpath):
+        with open(rpath, "r", encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+            robots_info.append({
+                "Comercio": cname,
+                "Ruta Archivo": rpath,
+                "Tamaño (caracteres)": len("".join(lines)),
+                "Primeras Reglas": " | ".join(lines[:4])
+            })
+
+pd.DataFrame(robots_info)
+```
+
+**Hallazgos de auditoría:**
+- **Olímpica:** Permite el rastreo de catálogo general (`Allow: /*`); restringe exclusivamente `/secret` y transacciones con `orderFormId`.
+- **Jumbo:** Permite recursos de catálogo; restringe áreas de autenticación `/Account*` y `/CallCenter/`.
+- **Éxito:** Dispone de directiva explícita `Allow: /` con `search=yes, ai-train=no` para motores de búsqueda.
+- En los tres comercios, los endpoints públicos de catálogo para consulta de precios están habilitados para navegación automatizada respetando pausas de cortesía.
+
+---
+
+## 3. Ejecución del Módulo de Scraping y Persistencia en SQLite
+
+El documento invoca formalmente al módulo [scraper.py](scraper.py) sin duplicar su código de red ni su lógica de extracción. El parámetro `MODO` controla si la corrida se ejecuta de forma determinista sin conexión (`offline`, desde `raw/`) o en vivo (`online`):
+
+```{python}
+import sqlite3
+import scraper
+
+# Parámetro de reproducibilidad: 'offline' (por defecto) o 'online'
+MODO = "offline"
+
+print(f"Iniciando ejecución del pipeline en modo: '{MODO}'")
+if MODO == "offline":
+    # Reprocesamiento determinista desde copias crudas en raw/
+    session_id = scraper.ejecutar_recoleccion_completa(from_raw=True)
+else:
+    # Extracción en vivo contra los servidores de los comercios
+    session_id = scraper.ejecutar_recoleccion_completa(from_raw=False)
+
+print(f"Pipeline finalizado. Sesión activa: {session_id}")
+```
+
+### 3.1 Reporte de Completitud de la Extracción
+A continuación, se leen los registros de auditoría de la tabla `ejecuciones`:
+
+```{python}
+conn = sqlite3.connect(scraper.DB_PATH)
+
+q_completitud = """
+SELECT 
+    c.nombre AS comercio,
+    e.ejecucion_id,
+    e.fecha_hora_inicio,
+    e.total_sitio AS oferta_reportada_sitio,
+    e.registros_obtenidos AS observaciones_recolectadas,
+    COALESCE(e.registros_con_precio, 0) AS observaciones_con_precio,
+    ROUND(100.0 * (e.registros_obtenidos - COALESCE(e.registros_con_precio, 0)) / NULLIF(e.registros_obtenidos, 0), 2) AS pct_sin_precio,
+    ROUND(100.0 * e.registros_obtenidos / NULLIF(e.total_sitio, 0), 2) AS pct_completitud,
+    e.estado,
+    e.nota
+FROM ejecuciones e
+JOIN comercios c ON e.comercio_id = c.comercio_id
+ORDER BY e.fecha_hora_inicio DESC
+LIMIT 6;
+"""
+df_completitud = pd.read_sql_query(q_completitud, conn)
+df_completitud
+```
+
+```{python}
+#| echo: false
+#| output: asis
+df_last = df_completitud[df_completitud['ejecucion_id'].str.contains('20261028_201829', na=False)]
+ol_comp = df_last[df_last['comercio'] == 'Olímpica'].iloc[0] if not df_last[df_last['comercio'] == 'Olímpica'].empty else None
+jb_comp = df_last[df_last['comercio'] == 'Jumbo'].iloc[0] if not df_last[df_last['comercio'] == 'Jumbo'].empty else None
+ex_comp = df_last[df_last['comercio'] == 'Éxito'].iloc[0] if not df_last[df_last['comercio'] == 'Éxito'].empty else None
+
+print(f"""**Interpretación de la completitud:**
+- En la corrida completa por subcategorías (`2026-10-28`), se alcanzó una cobertura del catálogo deduplicado de **{ol_comp['pct_completitud']:.1f}% en Olímpica** ({ol_comp['observaciones_recolectadas']:,} observaciones de {ol_comp['oferta_reportada_sitio']:,} catálogo reportado), **{jb_comp['pct_completitud']:.1f}% en Jumbo** ({jb_comp['observaciones_recolectadas']:,} observaciones de {jb_comp['oferta_reportada_sitio']:,} catálogo) y **{ex_comp['pct_completitud']:.1f}% en Éxito** ({ex_comp['observaciones_recolectadas']:,} observaciones de {ex_comp['oferta_reportada_sitio']:,} catálogo).
+- **Observaciones sin precio comercial activo:** En Éxito, el **{ex_comp['pct_sin_precio']:.2f}%** de las observaciones ({ex_comp['observaciones_recolectadas'] - ex_comp['observaciones_con_precio']:,} de {ex_comp['observaciones_recolectadas']:,}) no tienen precio comercial activo (`NULL`) debido a artículos sin stock activo (`Price = 0` y stock en cero en la API VTEX), frente al **{ol_comp['pct_sin_precio']:.2f}%** en Olímpica y **{jb_comp['pct_sin_precio']:.2f}%** en Jumbo.
+- Las ejecuciones históricas del `2026-10-08` para Olímpica y Éxito quedaron clasificadas formalmente como `parcial` debido al truncamiento a 1,500 ítems del catálogo general, documentando con precisión su causa.""")
+```
+
+---
+
+## 4. Preparación, Limpieza y Correspondencia de Productos
+
+### 4.1 Reglas de Transformación y Normalización
+1. **Separación de datos originales vs. estandarizados:** El texto original emitido por el comercio se resguarda íntegro en `nombre_original`, `descripcion_original` y `ficha_tecnica_original`. Los campos limpios se guardan en columnas separadas (`nombre_estandar`, `marca_estandar`, `subcategoria_estandar`).
+2. **Precios en Pesos Colombianos (COP):** Los precios se almacenan como números en coma flotante (`REAL`). Si un artículo no tiene oferta comercial activa o stock disponible, se almacena como `NULL` (nunca cero inventado).
+3. **Conversión a Unidades Base:**
+   - Líquidos: Litros (`L`, `lt`) convertidos a mililitros base ($1\text{ L} = 1000\text{ mL}$).
+   - Sólidos / Polvos: Kilogramos (`kg`) convertidos a gramos base ($1\text{ kg} = 1000\text{ g}$).
+   - Multipacks: Se calcula el contenido total del empaque ($2 \times 450\text{ g} = 900\text{ g}$).
+   - Artículos contables (bolsas, esponjas): Se registra el número de unidades base (`und`).
+
+### 4.2 Trazabilidad de Productos Excluidos (`descartados`)
+
+```{python}
+q_descartados = """
+SELECT comercio, motivo, COUNT(*) AS total_descartes
+FROM descartados
+GROUP BY comercio, motivo
+ORDER BY total_descartes DESC
+LIMIT 10;
+"""
+pd.read_sql_query(q_descartados, conn)
+```
+
+### 4.3 Tabla de Correspondencia y Comparabilidad Idempotente
+La correspondencia automática exige identidad estricta en código universal EAN, marca estandarizada, contenido total, unidad base y unidades por paquete entre los 3 comercios. Casos ambiguos o con múltiples SKUs no distinguibles se excluyen y se registran en `correspondencia_rechazada`.
+
+```{python}
+q_comparables = """
+SELECT 
+    p.producto_id,
+    p.ean,
+    p.nombre_estandar,
+    p.marca_estandar,
+    p.contenido_total || ' ' || p.unidad_base AS presentacion,
+    p.subcategoria_estandar,
+    COUNT(DISTINCT a.comercio_id) AS comercios_con_oferta
+FROM productos p
+JOIN anuncios a ON p.producto_id = a.producto_id
+WHERE p.es_comparable = 1
+GROUP BY p.producto_id
+HAVING comercios_con_oferta = 3
+ORDER BY p.marca_estandar, p.contenido_total
+LIMIT 12;
+"""
+pd.read_sql_query(q_comparables, conn)
+```
+
+```{python}
+#| echo: false
+#| output: asis
+# Conteo de comparables totales vs comparables con precio en los 3 comercios en la sesión
+q_comp_stats = f"""
+WITH con_precio_3 AS (
+    SELECT p.producto_id
+    FROM productos p
+    JOIN anuncios a ON p.producto_id = a.producto_id
+    JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+    WHERE o.ejecucion_id LIKE 'EXEC_20261028_201829%'
+      AND p.es_comparable = 1
+      AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+    GROUP BY p.producto_id
+    HAVING COUNT(DISTINCT a.comercio_id) = 3
+)
+SELECT 
+    (SELECT COUNT(*) FROM productos WHERE es_comparable = 1) AS total_comparables_catalogo,
+    (SELECT COUNT(*) FROM con_precio_3) AS comparables_con_precio_3_comercios;
+"""
+df_cs = pd.read_sql_query(q_comp_stats, conn)
+tot_comp_cat = df_cs.iloc[0]['total_comparables_catalogo']
+tot_comp_pr3 = df_cs.iloc[0]['comparables_con_precio_3_comercios']
+
+print(f"""**Auditoría de correspondencia:**
+- El catálogo universal consolida **{tot_comp_cat} productos estandarizados comparables**, presentes en los 3 comercios con idéntica marca, presentación nominal, unidad base y unidades por empaque.
+- En la sesión analizada (`EXEC_20261028_201829`), **{tot_comp_pr3} de {tot_comp_cat} productos ({100.0 * tot_comp_pr3 / tot_comp_cat:.1f}%)** cuentan con precio comercial activo simultáneamente en los 3 comercios.
+- Para evitar sesgos o comparaciones artificiales con artículos agotados (precios `NULL`), las consultas de dispersión de precios (Preguntas 3 a 6) y las figuras comparativas se basan en este subconjunto de productos con oferta comercial activa en los tres establecimientos.""")
+```
+
+---
+
+## 5. Base de Datos SQLite: Integridad y Relaciones
+
+El modelo relacional implementado en `comparador_precios.sqlite` vincula las entidades mediante claves foráneas explícitas e índices:
+
+```{python}
+# Verificación de integridad relacional
+cur = conn.cursor()
+cur.execute("PRAGMA foreign_key_check;")
+fks = cur.fetchall()
+cur.execute("PRAGMA integrity_check;")
+integrity = cur.fetchall()
+
+print(f"Errores de integridad referencial (Foreign Keys): {len(fks)}")
+print(f"Estado de integridad física de la base: {integrity[0][0]}")
+```
+
+---
+
+## 6. Consultas SQL (Las 8 Preguntas Obligatorias)
+
+Para garantizar total robustez analítica, las consultas se parametrizan sobre la **sesión de recolección completa más reciente** (`SESION_PREFIX`), evaluando observaciones capturadas en una misma ejecución temporal:
+
+```{python}
+q_latest_session = """
+SELECT substr(ejecucion_id, 1, 28) AS sesion_prefix
+FROM ejecuciones
+WHERE estado = 'completa'
+GROUP BY substr(ejecucion_id, 1, 28)
+HAVING COUNT(DISTINCT comercio_id) = 3
+ORDER BY MAX(fecha_hora_inicio) DESC
+LIMIT 1;
+"""
+SESION_PREFIX = pd.read_sql_query(q_latest_session, conn).iloc[0]["sesion_prefix"]
+print(f"Sesión analizada en consultas SQL: {SESION_PREFIX}")
+
+# CTE de productos con precio comercial activo en los 3 comercios en la sesión
+CTE_CON_PRECIO_3 = f"""
+WITH productos_con_precio_3 AS (
+    SELECT p.producto_id
+    FROM productos p
+    JOIN anuncios a ON p.producto_id = a.producto_id
+    JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+    WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+      AND p.es_comparable = 1
+      AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+    GROUP BY p.producto_id
+    HAVING COUNT(DISTINCT a.comercio_id) = 3
+)
+"""
+```
+
+---
+
+### Pregunta 1: Conteo de comercios, productos y observaciones
+> *¿Cuántos comercios, productos/presentaciones y observaciones contiene la base? ¿Cuántos productos aporta cada comercio?*
+
+```{python}
+# Consulta 1a: Totales globales de la base de datos
+q1_a = """
+SELECT 
+    (SELECT COUNT(*) FROM comercios) AS total_comercios,
+    (SELECT COUNT(*) FROM productos WHERE es_comparable = 1) AS productos_comparables_registrados,
+    (SELECT COUNT(*) FROM anuncios) AS total_anuncios,
+    (SELECT COUNT(*) FROM observaciones) AS total_observaciones_historicas;
+"""
+df1_a = pd.read_sql_query(q1_a, conn)
+df1_a
+```
+
+```{python}
+# Consulta 1b: Aporte de anuncios por comercio
+q1_b = """
+SELECT 
+    c.nombre AS comercio,
+    COUNT(a.anuncio_id) AS total_anuncios_recolectados,
+    COUNT(DISTINCT a.producto_id) AS productos_comparables_aportados
+FROM comercios c
+LEFT JOIN anuncios a ON c.comercio_id = a.comercio_id
+GROUP BY c.comercio_id
+ORDER BY total_anuncios_recolectados DESC;
+"""
+df1_b = pd.read_sql_query(q1_b, conn)
+df1_b
+```
+
+```{python}
+#| echo: false
+#| output: asis
+tot_com = df1_a.iloc[0]['total_comercios']
+tot_prod = df1_a.iloc[0]['productos_comparables_registrados']
+tot_anun = df1_a.iloc[0]['total_anuncios']
+tot_obs = df1_a.iloc[0]['total_observaciones_historicas']
+
+ex_an = df1_b.loc[df1_b['comercio'] == 'Éxito', 'total_anuncios_recolectados'].values[0]
+ol_an = df1_b.loc[df1_b['comercio'] == 'Olímpica', 'total_anuncios_recolectados'].values[0]
+jb_an = df1_b.loc[df1_b['comercio'] == 'Jumbo', 'total_anuncios_recolectados'].values[0]
+
+print(f"""**Interpretación:** La base consolida **{tot_com} comercios** con **{tot_anun:,} anuncios históricos** y **{tot_prod} referencias estandarizadas comparables**, respaldadas por **{tot_obs:,} observaciones** acumuladas. Por volumen de anuncios de catálogo recolectados, Éxito aporta {ex_an:,}, Olímpica {ol_an:,} y Jumbo {jb_an:,} publicaciones.""")
+```
+
+---
+
+### Pregunta 2: Cobertura en una misma ejecución y registros repetidos
+> *En una misma ejecución de recolección, ¿se obtuvieron al menos 24 observaciones comparables (ocho productos por tres comercios)? ¿Hay registros repetidos del mismo producto y comercio en esa ejecución?*
+
+```{python}
+q2 = f"""
+WITH obs_sesion AS (
+    SELECT 
+        o.ejecucion_id,
+        a.comercio_id,
+        p.producto_id,
+        COUNT(*) AS conteo_repeticiones
+    FROM observaciones o
+    JOIN anuncios a ON o.anuncio_id = a.anuncio_id
+    JOIN productos p ON a.producto_id = p.producto_id
+    WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+      AND p.es_comparable = 1
+    GROUP BY o.ejecucion_id, a.comercio_id, p.producto_id
+)
+SELECT 
+    '{SESION_PREFIX}' AS sesion_ejecucion,
+    COUNT(*) AS total_observaciones_comparables,
+    COUNT(DISTINCT producto_id) AS productos_distintos_cubiertos,
+    SUM(CASE WHEN conteo_repeticiones > 1 THEN 1 ELSE 0 END) AS registros_repetidos
+FROM obs_sesion;
+"""
+df2 = pd.read_sql_query(q2, conn)
+df2
+```
+
+```{python}
+#| echo: false
+#| output: asis
+obs_comp = df2.iloc[0]['total_observaciones_comparables']
+prod_dist = df2.iloc[0]['productos_distintos_cubiertos']
+rep_obs = df2.iloc[0]['registros_repetidos']
+
+print(f"""**Interpretación:** En la sesión `{SESION_PREFIX.rstrip('_')}`, se recolectaron **{obs_comp:,} observaciones comparables** correspondientes a **{prod_dist} productos distintos**, superando con holgura el mínimo exigido de 24 observaciones (8 productos × 3 comercios). El número de registros repetidos del mismo producto y comercio en esa ejecución es estrictamente **{rep_obs}**, validando la unicidad del catálogo tras la correspondencia unívoca por EAN y desambiguación.""")
+```
+
+---
+
+### Pregunta 3: Precios extremos, promedio y comercio más económico (con empates)
+> *Para cada presentación comparable, ¿cuáles son el precio mínimo, máximo y promedio? ¿Qué comercio ofrece el menor precio? Incluir los empates.*
+
+```{python}
+q3 = f"""
+{CTE_CON_PRECIO_3},
+precios_obs AS (
+    SELECT 
+        p.producto_id,
+        p.nombre_estandar || ' (' || p.contenido_total || ' ' || p.unidad_base || ')' AS presentacion,
+        c.nombre AS comercio,
+        o.precio_actual
+    FROM productos p
+    JOIN productos_con_precio_3 pcp ON p.producto_id = pcp.producto_id
+    JOIN anuncios a ON p.producto_id = a.producto_id
+    JOIN comercios c ON a.comercio_id = c.comercio_id
+    JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+    WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+      AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+),
+resumen AS (
+    SELECT 
+        producto_id,
+        presentacion,
+        MIN(precio_actual) AS precio_min,
+        MAX(precio_actual) AS precio_max,
+        ROUND(AVG(precio_actual), 2) AS precio_promedio,
+        COUNT(DISTINCT comercio) AS n_com
+    FROM precios_obs
+    GROUP BY producto_id
+    HAVING n_com = 3
+),
+ganadores AS (
+    SELECT 
+        po.producto_id,
+        po.comercio
+    FROM precios_obs po
+    JOIN resumen r ON po.producto_id = r.producto_id AND po.precio_actual = r.precio_min
+)
+SELECT 
+    r.producto_id,
+    r.presentacion,
+    r.precio_min,
+    r.precio_max,
+    r.precio_promedio,
+    GROUP_CONCAT(g.comercio, ', ') AS comercio_mas_economico
+FROM resumen r
+JOIN ganadores g ON r.producto_id = g.producto_id
+GROUP BY r.producto_id
+ORDER BY r.producto_id
+LIMIT 12;
+"""
+df3 = pd.read_sql_query(q3, conn)
+df3
+```
+
+```{python}
+#| echo: false
+#| output: asis
+ej3 = df3.iloc[0]
+print(f"""**Interpretación:** La función `GROUP_CONCAT` resuelve empates de precios sin sesgo. En la sesión se evalúan exclusivamente referencias con precio activo en los 3 comercios. Por ejemplo, en *{ej3['presentacion']}*, el precio mínimo es ${ej3['precio_min']:,.0f} COP ofrecido por **{ej3['comercio_mas_economico']}**, frente a un promedio de ${ej3['precio_promedio']:,.0f} COP y un máximo de ${ej3['precio_max']:,.0f} COP.""")
+```
+
+---
+
+### Pregunta 4: Ahorro en COP y en porcentaje
+> *¿Cuál es el ahorro en COP y en porcentaje al elegir la oferta más económica de cada presentación?*
+
+```{python}
+q4 = f"""
+{CTE_CON_PRECIO_3}
+SELECT 
+    p.producto_id,
+    p.nombre_estandar || ' (' || p.contenido_total || ' ' || p.unidad_base || ')' AS presentacion,
+    MIN(o.precio_actual) AS p_min,
+    MAX(o.precio_actual) AS p_max,
+    ROUND(MAX(o.precio_actual) - MIN(o.precio_actual), 2) AS ahorro_cop,
+    ROUND(100.0 * (MAX(o.precio_actual) - MIN(o.precio_actual)) / MAX(o.precio_actual), 2) AS ahorro_porcentual
+FROM productos p
+JOIN productos_con_precio_3 pcp ON p.producto_id = pcp.producto_id
+JOIN anuncios a ON p.producto_id = a.producto_id
+JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+  AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+GROUP BY p.producto_id
+ORDER BY ahorro_porcentual DESC
+LIMIT 10;
+"""
+df4 = pd.read_sql_query(q4, conn)
+df4
+```
+
+```{python}
+#| echo: false
+#| output: asis
+top_ahorro_pct = df4.iloc[0]
+top_ahorro_cop = df4.sort_values('ahorro_cop', ascending=False).iloc[0]
+print(f"""**Interpretación:** Evaluando productos con precio activo en los 3 comercios, el ahorro porcentual relativo alcanza hasta un **{top_ahorro_pct['ahorro_porcentual']:.2f}%** en el *{top_ahorro_pct['presentacion']}* (${top_ahorro_pct['ahorro_cop']:,.0f} COP de diferencia entre el comercio más costoso y el más económico), y un ahorro monetario neto de hasta **${top_ahorro_cop['ahorro_cop']:,.0f} COP** en presentaciones de gran tamaño (*{top_ahorro_cop['presentacion']}*).""")
+```
+
+---
+
+### Pregunta 5: Menor precio por unidad de contenido (sin mezclar unidades)
+> *Si se incluyeron tamaños comparables del mismo producto, ¿qué presentación y comercio tienen el menor precio por mL, g, mg o unidad?*
+
+```{python}
+q5 = f"""
+{CTE_CON_PRECIO_3},
+unit_calc AS (
+    SELECT 
+        p.marca_estandar,
+        p.nombre_estandar,
+        p.contenido_total,
+        p.unidad_base,
+        c.nombre AS comercio,
+        o.precio_actual,
+        ROUND(o.precio_actual / p.contenido_total, 4) AS costo_unitario
+    FROM productos p
+    JOIN productos_con_precio_3 pcp ON p.producto_id = pcp.producto_id
+    JOIN anuncios a ON p.producto_id = a.producto_id
+    JOIN comercios c ON a.comercio_id = c.comercio_id
+    JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+    WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+      AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+      AND p.contenido_total > 0
+),
+marcas_multitamano AS (
+    SELECT marca_estandar, unidad_base
+    FROM unit_calc
+    GROUP BY marca_estandar, unidad_base
+    HAVING COUNT(DISTINCT contenido_total) > 1
+),
+minimos AS (
+    SELECT 
+        uc.marca_estandar,
+        uc.unidad_base,
+        MIN(uc.costo_unitario) AS min_unit
+    FROM unit_calc uc
+    JOIN marcas_multitamano mm ON uc.marca_estandar = mm.marca_estandar AND uc.unidad_base = mm.unidad_base
+    GROUP BY uc.marca_estandar, uc.unidad_base
+)
+SELECT 
+    uc.marca_estandar,
+    uc.nombre_estandar,
+    uc.contenido_total || ' ' || uc.unidad_base AS presentacion_mas_economica,
+    uc.comercio,
+    uc.precio_actual,
+    uc.costo_unitario,
+    'COP / ' || uc.unidad_base AS unidad_tarifa
+FROM unit_calc uc
+JOIN minimos m ON uc.marca_estandar = m.marca_estandar 
+              AND uc.unidad_base = m.unidad_base 
+              AND uc.costo_unitario = m.min_unit
+ORDER BY uc.unidad_base, uc.costo_unitario ASC
+LIMIT 12;
+"""
+df5 = pd.read_sql_query(q5, conn)
+df5
+```
+
+```{python}
+#| echo: false
+#| output: asis
+unidades_cubiertas = df5['unidad_tarifa'].unique()
+print(f"""**Interpretación:** Separando rigurosamente los rankings por unidad de medida ({', '.join(f'`{u}`' for u in unidades_cubiertas)}), se observa que en líquidos los formatos galón y garrafa obtienen el menor precio unitario. Evaluando exclusivamente referencias con precios válidos en los 3 comercios, se confirman economías de escala claras tanto en detergentes como en limpiadores.""")
+```
+
+---
+
+### Pregunta 6: Mayores diferencias relativas e interpretación para el consumidor
+> *¿Cuáles son las mayores diferencias de precio entre comercios? Ordenar las presentaciones por ahorro porcentual.*
+
+```{python}
+q6 = f"""
+{CTE_CON_PRECIO_3}
+SELECT 
+    p.nombre_estandar,
+    p.marca_estandar,
+    p.contenido_total || ' ' || p.unidad_base AS presentacion,
+    MIN(o.precio_actual) AS p_min,
+    MAX(o.precio_actual) AS p_max,
+    ROUND(MAX(o.precio_actual) - MIN(o.precio_actual), 2) AS brecha_cop,
+    ROUND(100.0 * (MAX(o.precio_actual) - MIN(o.precio_actual)) / MAX(o.precio_actual), 2) AS ahorro_porcentual
+FROM productos p
+JOIN productos_con_precio_3 pcp ON p.producto_id = pcp.producto_id
+JOIN anuncios a ON p.producto_id = a.producto_id
+JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+  AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+GROUP BY p.producto_id
+ORDER BY ahorro_porcentual DESC
+LIMIT 8;
+"""
+df6 = pd.read_sql_query(q6, conn)
+df6
+```
+
+```{python}
+#| echo: false
+#| output: asis
+min_p6 = df6['ahorro_porcentual'].min()
+max_p6 = df6['ahorro_porcentual'].max()
+print(f"""**Interpretación orientada al consumidor:**
+Las mayores brechas relativas (entre {min_p6:.1f}% y {max_p6:.1f}%) se concentran en detergentes y limpiadores de marcas líderes. Esta dispersión se origina por la coexistencia de promociones dinámicas agresivas en un comercio frente a precios de lista estándar en los demás, confirmando que la comparación previa permite optimizar sustancialmente el presupuesto del hogar.""")
+```
+
+---
+
+### Pregunta 7: Datos faltantes o inconsistencias
+> *¿Qué datos faltantes o inconsistentes afectan la comparación y cuántos son?*
+
+```{python}
+q7 = """
+SELECT 
+    c.nombre AS comercio,
+    COUNT(a.anuncio_id) AS total_anuncios,
+    SUM(CASE WHEN a.marca_estandar IS NULL OR a.marca_estandar = '' THEN 1 ELSE 0 END) AS sin_marca_identificable,
+    SUM(CASE WHEN a.ean IS NULL OR a.ean = '' THEN 1 ELSE 0 END) AS sin_ean,
+    SUM(CASE WHEN a.contenido_total IS NULL OR a.contenido_total <= 0 THEN 1 ELSE 0 END) AS sin_contenido_cuantificable,
+    SUM(CASE WHEN o.precio_actual IS NULL OR o.precio_actual <= 0 THEN 1 ELSE 0 END) AS sin_precio_valido,
+    ROUND(100.0 * SUM(CASE WHEN o.precio_actual IS NULL OR o.precio_actual <= 0 THEN 1 ELSE 0 END) / COUNT(o.observacion_id), 2) AS pct_observaciones_sin_precio,
+    SUM(CASE WHEN a.descripcion_original IS NULL OR a.descripcion_original = '' THEN 1 ELSE 0 END) AS sin_descripcion_original
+FROM comercios c
+JOIN anuncios a ON c.comercio_id = a.comercio_id
+LEFT JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+GROUP BY c.comercio_id;
+"""
+df7 = pd.read_sql_query(q7, conn)
+df7
+```
+
+```{python}
+#| echo: false
+#| output: asis
+# Conteo exacto en anuncios sin marca para Olímpica
+sin_marca_ol = cur.execute("SELECT COUNT(*) FROM anuncios WHERE comercio_id = 2 AND (marca_estandar IS NULL OR marca_estandar = '')").fetchone()[0]
+
+# Conteo en la sesión analizada para Jumbo y Éxito
+q_precios_sesion = f"""
+SELECT 
+    c.nombre AS comercio,
+    COUNT(o.observacion_id) as total_obs,
+    SUM(CASE WHEN o.precio_actual IS NULL OR o.precio_actual <= 0 THEN 1 ELSE 0 END) as sin_precio
+FROM comercios c
+JOIN anuncios a ON c.comercio_id = a.comercio_id
+JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+GROUP BY c.comercio_id
+"""
+df_ps = pd.read_sql_query(q_precios_sesion, conn)
+ex_row = df_ps[df_ps['comercio'] == 'Éxito'].iloc[0]
+jb_row = df_ps[df_ps['comercio'] == 'Jumbo'].iloc[0]
+
+print(f"""**Interpretación:** 
+- **Marca:** En el catálogo de anuncios, Olímpica registra **{sin_marca_ol} referencias sin marca explícita** (`NULL`), catalogadas como genéricas. En Éxito y Jumbo el 100% de los anuncios cuenta con marca asignada.
+- **Precios sin oferta activa:** En la sesión analizada, Éxito presenta **{ex_row['sin_precio']:,} observaciones sin precio activo de {ex_row['total_obs']:,} ({100.0 * ex_row['sin_precio'] / ex_row['total_obs']:.2f}%)** debido a ítems agotados (`Price = 0` y stock en cero en la API VTEX). Por su parte, Olímpica presenta 0 observaciones sin precio, y en Jumbo el conteo en esta sesión es estrictamente **{jb_row['sin_precio']}** (registrando únicamente 1 observación histórica sin precio en ejecuciones previas).
+- **Identificación EAN y contenido:** La tasa de codificación EAN es del 100% en Olímpica y Jumbo, y superior al 99.4% en Éxito.""")
+```
+
+---
+
+### Pregunta 8: Tamaño de la oferta y completitud de atributos
+> *¿Cuántos productos de la categoría se obtuvieron por comercio y ejecución? ¿Cómo se compara el tamaño de la oferta entre comercios y qué proporción de productos tiene descripción, marca y contenido identificables?*
+
+```{python}
+q8 = f"""
+SELECT 
+    c.nombre AS comercio,
+    e.ejecucion_id,
+    e.total_sitio AS oferta_reportada_sitio,
+    e.registros_obtenidos AS observaciones_extraidas,
+    COALESCE(e.registros_con_precio, 0) AS observaciones_con_precio,
+    ROUND(100.0 * e.registros_obtenidos / NULLIF(e.total_sitio, 0), 2) AS pct_cobertura,
+    COUNT(a.anuncio_id) AS total_anuncios,
+    ROUND(100.0 * SUM(CASE WHEN a.descripcion_original IS NOT NULL AND a.descripcion_original != '' THEN 1 ELSE 0 END) / COUNT(a.anuncio_id), 2) AS pct_con_descripcion,
+    ROUND(100.0 * SUM(CASE WHEN a.marca_estandar IS NOT NULL AND a.marca_estandar != '' THEN 1 ELSE 0 END) / COUNT(a.anuncio_id), 2) AS pct_con_marca,
+    ROUND(100.0 * SUM(CASE WHEN a.contenido_total IS NOT NULL AND a.contenido_total > 0 THEN 1 ELSE 0 END) / COUNT(a.anuncio_id), 2) AS pct_con_contenido
+FROM ejecuciones e
+JOIN comercios c ON e.comercio_id = c.comercio_id
+LEFT JOIN observaciones o ON e.ejecucion_id = o.ejecucion_id
+LEFT JOIN anuncios a ON o.anuncio_id = a.anuncio_id
+WHERE e.ejecucion_id LIKE '{SESION_PREFIX}%'
+GROUP BY e.ejecucion_id;
+"""
+df8 = pd.read_sql_query(q8, conn)
+df8
+```
+
+```{python}
+#| echo: false
+#| output: asis
+print("**Interpretación:**")
+for _, r in df8.iterrows():
+    print(f"- **{r['comercio']}:** {r['observaciones_extraidas']:,} observaciones extraídas ({r['pct_cobertura']:.1f}% cobertura), {r['pct_con_marca']:.1f}% con marca estructurada y {r['pct_con_contenido']:.1f}% con contenido cuantificable.")
+```
+
+---
+
+## 7. Visualizaciones e Interpretación Económica
+
+Las visualizaciones son construidas directamente a partir de las consultas relacionales en SQLite y exportadas en alta resolución (300 DPI) a la carpeta `graficos/`:
+
+```{python}
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
+os.makedirs("graficos", exist_ok=True)
+sns.set_theme(style="whitegrid", font="sans-serif")
+
+def build_palette(series):
+    pal = {}
+    for c in series.unique():
+        s = str(c).lower()
+        if "jumbo" in s:
+            pal[c] = "#2ca02c"
+        elif "ol" in s:
+            pal[c] = "#d62728"
+        else:
+            pal[c] = "#ff7f0e"
+    return pal
+```
+
+### 7.1 Precios de las Mismas Presentaciones entre Comercios
+
+*Criterio de selección:* Se seleccionó un subconjunto de 8 productos comparables de la canasta básica de aseo del hogar con presencia y precio activo en los tres comercios dentro de la sesión analizada.
+
+```{python}
+#| fig-cap: "Comparación de precios en COP para presentaciones idénticas con precio activo en Éxito, Olímpica y Jumbo."
+q_fig1 = f"""
+SELECT 
+    p.nombre_estandar || ' (' || p.contenido_total || ' ' || p.unidad_base || ')' AS producto,
+    c.nombre AS comercio,
+    o.precio_actual
+FROM productos p
+JOIN anuncios a ON p.producto_id = a.producto_id
+JOIN comercios c ON a.comercio_id = c.comercio_id
+JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+  AND p.ean IN (
+      '7509546051932', '7702010382079', '7509546673790',
+      '7702010225123', '7702010225109', '7702166068667',
+      '7702191164327', '7500435160544'
+  )
+  AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+ORDER BY p.marca_estandar, p.contenido_total, c.nombre;
+"""
+df_fig1 = pd.read_sql_query(q_fig1, conn)
+pal1 = build_palette(df_fig1['comercio'])
+
+plt.figure(figsize=(12, 5.5))
+ax = sns.barplot(data=df_fig1, x='producto', y='precio_actual', hue='comercio', palette=pal1)
+plt.title('Comparación de Precios por Presentación entre Comercios (COP)', fontsize=13, fontweight='bold', pad=12)
+plt.xlabel('Producto y Presentación', fontsize=11, labelpad=8)
+plt.ylabel('Precio Actual (COP)', fontsize=11, labelpad=8)
+plt.xticks(rotation=45, ha='right', fontsize=8.5)
+ax.legend(title='Comercio', frameon=True)
+ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"${x:,.0f}"))
+plt.tight_layout()
+plt.savefig('graficos/1_precios_comercios.png', dpi=300)
+plt.show()
+```
+
+**Interpretación y limitaciones:**
+El gráfico evidencia que ningún comercio sostiene el precio más bajo en todos los artículos analizados, observándose alternancia en el comercio más económico según la referencia y la categoría. *Limitación:* Los precios capturados reflejan ofertas y condiciones comerciales vigentes al momento de la extracción y no tarifas contractuales permanentes.
+
+---
+
+### 7.2 Precio por Unidad de Contenido: Economías de Escala
+
+```{python}
+#| fig-cap: "Costo por mililitro (COP/mL) según tamaño de empaque para Lavaplatos Axion Líquido y Limpiapisos Fabuloso."
+q_fig2 = f"""
+SELECT 
+    p.nombre_estandar AS producto_nombre,
+    p.contenido_total || ' ' || p.unidad_base AS presentacion,
+    p.contenido_total,
+    c.nombre AS comercio,
+    (o.precio_actual / p.contenido_total) AS costo_ml
+FROM productos p
+JOIN anuncios a ON p.producto_id = a.producto_id
+JOIN comercios c ON a.comercio_id = c.comercio_id
+JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+  AND (
+      p.ean IN ('7509546051932', '7702010382079', '7509546673790')
+      OR p.ean IN ('7702010225123', '7702010225109')
+  )
+  AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+ORDER BY p.nombre_estandar, p.contenido_total;
+"""
+df_fig2 = pd.read_sql_query(q_fig2, conn)
+pal2 = build_palette(df_fig2['comercio'])
+
+fig, (ax_ax, ax_fb) = plt.subplots(1, 2, figsize=(14, 5), sharey=False)
+df_ax = df_fig2[df_fig2['producto_nombre'].str.contains('Axion', case=False)]
+df_fb = df_fig2[df_fig2['producto_nombre'].str.contains('Fabuloso', case=False)]
+
+sns.barplot(data=df_ax, x='presentacion', y='costo_ml', hue='comercio', palette=pal2, ax=ax_ax)
+ax_ax.set_title('Axion Líquido Limón (COP / mL)', fontsize=11, fontweight='bold')
+ax_ax.set_xlabel('Tamaño de Empaque')
+ax_ax.set_ylabel('Costo por Mililitro (COP / mL)')
+
+sns.barplot(data=df_fb, x='presentacion', y='costo_ml', hue='comercio', palette=pal2, ax=ax_fb)
+ax_fb.set_title('Fabuloso Antibacterial Lavanda (COP / mL)', fontsize=11, fontweight='bold')
+ax_fb.set_xlabel('Tamaño de Empaque')
+ax_fb.set_ylabel('Costo por Mililitro (COP / mL)')
+
+plt.tight_layout()
+plt.savefig('graficos/2_precio_por_unidad.png', dpi=300)
+plt.show()
+```
+
+**Interpretación y limitaciones:**
+Existe una marcada **economía de escala** en el hogar: en lavaplatos Axion líquido, el tamaño familiar (2.300 mL) reduce de forma sustancial el costo unitario frente a la presentación menor de 750 mL en todas las cadenas. Igualmente, en limpiapisos Fabuloso, pasar de 1.000 mL a 2.000 mL genera un menor costo por mililitro de manera consistente entre comercios. *Limitación:* Aprovechar estas economías de escala requiere un mayor desembolso de liquidez inicial que no siempre resulta accesible para todos los hogares.
+
+---
+
+### 7.3 Oportunidades de Ahorro Potencial (COP y %)
+
+*Criterio de selección:* Se analizan los mismos 8 productos comparables de la canasta básica con presencia verificada en las tres cadenas para cuantificar la dispersión de precios en términos absolutos (COP) y porcentuales (%).
+
+```{python}
+#| fig-cap: "Dispersión de oportunidades de ahorro potencial absoluto (COP) y relativo (%) entre comercios."
+q_fig3 = f"""
+SELECT 
+    p.nombre_estandar || ' (' || p.contenido_total || ' ' || p.unidad_base || ')' AS producto,
+    ROUND(MAX(o.precio_actual) - MIN(o.precio_actual), 2) AS ahorro_cop,
+    ROUND(100.0 * (MAX(o.precio_actual) - MIN(o.precio_actual)) / MAX(o.precio_actual), 2) AS ahorro_pct
+FROM productos p
+JOIN anuncios a ON p.producto_id = a.producto_id
+JOIN observaciones o ON a.anuncio_id = o.anuncio_id
+WHERE o.ejecucion_id LIKE '{SESION_PREFIX}%'
+  AND p.ean IN (
+      '7509546051932', '7702010382079', '7509546673790',
+      '7702010225123', '7702010225109', '7702166068667',
+      '7702191164327', '7500435160544'
+  )
+  AND o.precio_actual IS NOT NULL AND o.precio_actual > 0
+GROUP BY p.producto_id
+HAVING COUNT(DISTINCT a.comercio_id) = 3
+ORDER BY ahorro_pct ASC;
+"""
+df_fig3 = pd.read_sql_query(q_fig3, conn)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
+ax1.barh(df_fig3['producto'], df_fig3['ahorro_pct'], color='#1f77b4')
+ax1.set_title('Ahorro Potencial Relativo Máximo (%)', fontsize=11, fontweight='bold')
+ax1.set_xlabel('Ahorro Relativo (%)')
+for i, v in enumerate(df_fig3['ahorro_pct']):
+    ax1.text(v + 0.4, i, f"{v:.1f}%", va='center', fontsize=8.5)
+
+ax2.barh(df_fig3['producto'], df_fig3['ahorro_cop'], color='#2ca02c')
+ax2.set_title('Ahorro Potencial Absoluto Máximo (COP)', fontsize=11, fontweight='bold')
+ax2.set_xlabel('Diferencia de Precio (COP)')
+ax2.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"${x:,.0f}"))
+for i, v in enumerate(df_fig3['ahorro_cop']):
+    ax2.text(v + 250, i, f"${v:,.0f}", va='center', fontsize=8.5)
+
+plt.tight_layout()
+plt.savefig('graficos/3_ahorro_potencial.png', dpi=300)
+plt.show()
+```
+
+---
+
+## 8. Conclusiones y Orientación al Consumidor
+
+1. **Inexistencia de un comercio universalmente más barato:**
+   Los datos empíricos desmienten la hipótesis de que un comercio sea globalmente el más económico en toda la categoría. Se observa alternancia de liderazgo en precios entre comercios según la subcategoría, el fabricante y la presentación analizada. Comparar precios promedio de catálogos con surtidos heterogéneos induce a conclusiones sesgadas; la comparación solo es metodológicamente rigurosa al contrastar referencias y presentaciones idénticas (mismo EAN y contenido) dentro de la misma ventana de captura.
+2. **Ahorro unitario vs. Desembolso total:**
+   Comprar formatos de mayor volumen reduce el costo unitario por mililitro o gramo de forma sustancial gracias a las economías de escala del empaque. No obstante, el consumidor debe sopesar si su flujo de efectivo permite el desembolso inicial requerido para adquirir presentaciones familiares frente a presentaciones individuales de menor desembolso nominal.
+3. **Efecto de las promociones y temporalidad:**
+   Las brechas de precio más amplias detectadas entre cadenas obedecen en gran medida a descuentos temporales (`es_promocion = 1`). En consecuencia, los precios reflejan las condiciones del momento de la captura y las oportunidades de ahorro son dinámicas, evidenciando el valor de herramientas de monitoreo continuo como el comparador implementado.

@@ -1,0 +1,32 @@
+{
+  "ejecucion_id": "EXEC_20261028_201829_06c93c_ÉXITO",
+  "fecha_hora_captura": "2026-10-28T20:26:05-05:00",
+  "total_sitio": 5589,
+  "total_obtenido_bruto": 5589,
+  "subcategorias": {
+    "jabones-detergentes-y-limpiadores": {
+      "url": "https://www.exito.com/io/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/jabones-detergentes-y-limpiadores",
+      "total_sitio": 1997,
+      "items_obtenidos": 1997,
+      "timestamp": "2026-10-28T20:20:29-05:00"
+    },
+    "lavalozas-y-desengrasante": {
+      "url": "https://www.exito.com/io/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/lavalozas-y-desengrasante",
+      "total_sitio": 578,
+      "items_obtenidos": 578,
+      "timestamp": "2026-10-28T20:22:04-05:00"
+    },
+    "ambientadores-e-insecticidas": {
+      "url": "https://www.exito.com/io/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/ambientadores-e-insecticidas",
+      "total_sitio": 1188,
+      "items_obtenidos": 1188,
+      "timestamp": "2026-10-28T20:22:43-05:00"
+    },
+    "implementos-para-la-limpieza": {
+      "url": "https://www.exito.com/io/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/implementos-para-la-limpieza",
+      "total_sitio": 1826,
+      "items_obtenidos": 1826,
+      "timestamp": "2026-10-28T20:23:38-05:00"
+    }
+  }
+}
