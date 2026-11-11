@@ -3,7 +3,7 @@
 **Autor:** Thomas Felipe Matallana Fiquitiva  
 **Asignatura:** Minería de Datos (2016325) — Universidad Nacional de Colombia  
 **Lenguaje del proceso:** Python 3 (recolección, base de datos SQLite, validación, pruebas y aplicación en Streamlit)  
-**Enlace a la aplicación desplegada:** [https://comparador-higiene-tmatallana.streamlit.app](https://comparador-higiene-tmatallana.streamlit.app) *(Reemplazar por URL final de Streamlit Community Cloud)*
+**Enlace a la aplicación desplegada:** [https://comparador-higiene-tmatallana.streamlit.app](https://comparador-higiene-tmatallana.streamlit.app/) 
 
 ---
 
