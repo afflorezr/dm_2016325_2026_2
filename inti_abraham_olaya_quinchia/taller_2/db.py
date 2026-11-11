@@ -25,7 +25,8 @@ from contextlib import closing, contextmanager
 import pandas as pd
 import streamlit as st
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comparador_precios.sqlite")
+DB_PATH = os.environ.get("COMPARADOR_DB") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "comparador_precios.sqlite")
 MAX_BUSQUEDA = 60
 MAX_LISTA = 200          # tope de elementos por filtro de lista
 
@@ -262,3 +263,27 @@ def obtener_datos_graficos(con, parametros=None):
           LEFT JOIN productos p ON p.id = a.producto_id
           {w}
          ORDER BY o.fecha_consulta, c.nombre""", p)
+
+
+# ----------------------------------------------------------------------------
+# 4. Tabla filtrada y lista de productos comparables (usadas por la página Resumen)
+# ----------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def obtener_tabla(con, parametros=None):
+    """Último precio de cada anuncio que cumple los filtros (tabla, boxplot, precio unitario, promociones)."""
+    w, p = _where(parametros, _COL_UP, _BUSQ_UP)
+    return _df(con, f"""
+        SELECT comercio, nombre_estandar AS nombre, marca, subcategoria,
+               contenido_normalizado AS contenido, unidad_normalizada AS unidad,
+               precio, precio_unitario, en_promocion, disponibilidad,
+               fecha_consulta, url, producto_id, comparable
+          FROM v_ultimo_precio{w}
+         ORDER BY precio LIMIT 20000""", p)
+
+
+@st.cache_data(show_spinner=False)
+def obtener_productos_comparables(con):
+    """Productos comparables (uno por producto_id) para el selector de evolución de precios."""
+    return _df(con, """SELECT DISTINCT producto_id, marca, producto, contenido_normalizado AS contenido,
+                              unidad_normalizada AS unidad
+                         FROM v_comparables ORDER BY marca, producto""")

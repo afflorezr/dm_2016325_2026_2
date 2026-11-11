@@ -1,4 +1,4 @@
-"""app.py - Interfaz Streamlit del comparador de precios (sin SQL: usa db.py y actualizacion.py)."""
+"""app.py - Punto de entrada multipágina (st.navigation). Sin SQL: usa db.py y actualizacion.py."""
 
 import streamlit as st
 
@@ -33,3 +33,6 @@ def boton_actualizar():
 
 
 boton_actualizar()
+
+pagina = st.navigation([st.Page("paginas/resumen.py", title="Resumen", default=True)])
+pagina.run()
