@@ -1,0 +1,15 @@
+# Credenciales y configuración local: NUNCA se suben (se configuran en la plataforma de despliegue)
+.Renviron
+.streamlit/secrets.toml
+.env
+
+# Archivos de sesión de R / RStudio
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj.user
+
+# Datos intermedios y bases temporales (la fuente de verdad es raw/ y comparador_precios.sqlite)
+brutos_*.rds
+prueba_*.sqlite
+*.log
