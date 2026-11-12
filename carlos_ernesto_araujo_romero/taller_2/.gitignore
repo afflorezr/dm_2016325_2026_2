@@ -7,3 +7,4 @@
 *.sqlite-shm
 verificacion_offline.sqlite
 *.log
+rsconnect/

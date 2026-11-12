@@ -5,7 +5,7 @@
 **Lenguaje:** R 4.3.3  
 **Categoría:** confitería (chocolates, chocolate de mesa, caramelos, gomitas, chicles y mentas)  
 **Comercios activos:** Carulla, Jumbo y Olímpica  
-**Aplicación:** Shiny con `bslib` (ver [Enlace publicado](#10-despliegue))  
+**Aplicación publicada:** <https://01a1d0a7-6ccf-190d-8d9e-288697a8dfdc.share.connect.posit.cloud/> (Posit Connect Cloud)  
 **Base:** `comparador_precios.sqlite`  
 **Documento del Taller 1:** `../Taller_Parcial1/Taller_Parcial1/taller_1.html`
 
@@ -399,22 +399,44 @@ y no consultan los sitios ni la base de la entrega.
 
 ## 10. Despliegue
 
-La aplicación se publica en **shinyapps.io** con `deploy.R`:
+**Aplicación publicada:** <https://01a1d0a7-6ccf-190d-8d9e-288697a8dfdc.share.connect.posit.cloud/>
+
+Plataforma: **Posit Connect Cloud**, cuenta `carl0sarauj0`.
+Acceso público: cualquier persona con el enlace puede verla.
+
+### Cómo se publicó
 
 ```r
 install.packages("rsconnect")
-rsconnect::setAccountInfo(name = "<CUENTA>", token = "<TOKEN>", secret = "<SECRETO>")
+rsconnect::connectCloudUser()   # autorización interactiva; registra la cuenta
 source("deploy.R")
 ```
 
-`setAccountInfo()` se ejecuta en la consola, nunca dentro de un archivo del
-proyecto. Las credenciales no están en el repositorio.
+También se puede autenticar sin navegador con un client ID y un secret creados
+en <https://login.posit.cloud/identity/credentials>:
 
-**Estado:** la publicación está pendiente porque el entorno de desarrollo no
-tiene una cuenta ni un token de shinyapps.io. El comando anterior deja la
-aplicación publicada y el enlace se agrega en esta sección. En el servidor
-público el scraping suele estar bloqueado; la aplicación lo informa y permite
-el modo sin conexión, tal como exige el enunciado.
+```r
+rsconnect::connectCloudClientCredentials(
+  clientId = "<CLIENT_ID>", clientSecret = "<CLIENT_SECRET>",
+  accountName = "carl0sarauj0"
+)
+```
+
+`deploy.R` publica con `account = "carl0sarauj0"` y `appVisibility = "public"`.
+Las credenciales se administran en la plataforma; el repositorio no contiene
+tokens ni secretos.
+
+### Notas del servidor
+
+- En el enlace publicado funcionan los filtros, los indicadores, los cuatro
+  gráficos, la tabla con descarga, la canasta y la comparación de ejecuciones.
+- Connect Cloud no permite hacer scraping desde su red. El botón de
+  actualización en línea informa el error por comercio y conserva la base; el
+  modo sin conexión reprocesa `raw/`. Si el sistema de archivos del servidor es
+  de solo lectura, la aplicación muestra el motivo en lugar de dejar la base
+  inconsistente.
+- Las plataformas gratuitas no conservan los cambios de la base al reiniciarse;
+  la actualización en línea funciona en la ejecución local.
 
 ---
 
