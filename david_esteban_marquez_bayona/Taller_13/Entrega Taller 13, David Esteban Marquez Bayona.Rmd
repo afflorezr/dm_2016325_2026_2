@@ -1,0 +1,459 @@
+---
+title: 'Actividad Clase 13: Regresión lineal, múltiple y logística'
+author: "David Márquez"
+date: "19 de octubre de 2026"
+output:
+  pdf_document:
+    toc: true
+    latex_engine: xelatex
+  github_document:
+    toc: true
+    html_preview: false
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    code_folding: show
+subtitle: Minería de Datos · Departamento de Estadística, Universidad Nacional de
+  Colombia, Sede Bogotá
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4.8, fig.align = "center",
+  dpi = 120, comment = "#>"
+)
+```
+
+```{r paquetes}
+library(car)       # VIF, Anova tipo II, ncvTest, crPlots, outlierTest
+library(lmtest)    # bptest, resettest, dwtest, coeftest
+library(sandwich)  # errores estándar robustos (HC3)
+library(pROC)      # curva ROC y AUC
+library(ggplot2)   # gráficos
+library(knitr)     # tablas
+
+verde <- "#1b4d2e"
+theme_set(theme_minimal(base_size = 12))
+
+# Funciones auxiliares para formatear números en el texto
+f   <- function(x, d = 2) formatC(x, format = "f", digits = d)
+pct <- function(x, d = 1) paste0(formatC(100 * x, format = "f", digits = d), "%")
+fp  <- function(p) ifelse(p < 0.001, "< 0.001", paste("=", formatC(p, format = "f", digits = 3)))
+fpt <- function(p) ifelse(p < 0.001, "< 0.001", formatC(p, format = "f", digits = 3))
+
+# Tabla de coeficientes con IC al 95% y valor p formateado
+tabla_coef <- function(m) {
+  ci <- confint(m)
+  data.frame(Estimación = coef(m), `IC 2.5%` = ci[, 1], `IC 97.5%` = ci[, 2],
+             `Valor p` = fpt(summary(m)$coefficients[, 4]), check.names = FALSE)
+}
+```
+
+# Datos
+
+Se usan los datos simulados del enunciado: 120 registros mensuales de ventas con gasto en publicidad, precio, región y un indicador de promoción.
+
+```{r datos}
+set.seed(42)
+n <- 120
+ventas <- data.frame(
+  mes        = rep(1:12, times = 10),
+  publicidad = round(runif(n, min = 2.0, max = 4.5), 1),
+  precio     = round(runif(n, min = 13.0, max = 15.5), 1),
+  region     = sample(c("Norte", "Sur", "Este", "Oeste"), n, replace = TRUE),
+  promo      = sample(c(0L, 1L), n, replace = TRUE)
+)
+ventas$ventas <- round(
+  100 + 18 * ventas$publicidad - 5 * ventas$precio +
+    rnorm(n, mean = 0, sd = 8)
+)
+
+str(ventas)
+summary(ventas[, c("publicidad", "precio", "ventas")])
+table(ventas$region)
+table(ventas$promo)
+```
+
+Correlaciones entre las variables numéricas:
+
+```{r correlaciones}
+round(cor(ventas[, c("publicidad", "precio", "ventas")]), 3)
+```
+
+Publicidad tiene una correlación fuerte y positiva con las ventas; precio, una correlación débil y negativa. Las dos variables predictoras prácticamente no están correladas entre sí, lo que anticipa que no habrá multicolinealidad en el modelo múltiple.
+
+# Ejercicio 1: Regresión simple
+
+> Ajuste un modelo de regresión lineal simple que explique las ventas a partir del gasto en publicidad. Interprete el coeficiente de publicidad y el R². ¿El gasto en publicidad explica bien las ventas?
+
+```{r ej1-modelo}
+mod1 <- lm(ventas ~ publicidad, data = ventas)
+summary(mod1)
+```
+
+```{r ej1-tabla}
+kable(tabla_coef(mod1), digits = 3, caption = "Coeficientes del modelo simple con IC al 95%")
+```
+
+```{r ej1-extraer, include=FALSE}
+s1   <- summary(mod1)
+b1   <- coef(mod1)
+ci1  <- confint(mod1)
+r2_1 <- s1$r.squared
+r_xy <- cor(ventas$publicidad, ventas$ventas)
+```
+
+```{r ej1-grafico, fig.cap="Ventas frente a gasto en publicidad con la recta MCO y su banda de confianza al 95%."}
+ggplot(ventas, aes(publicidad, ventas)) +
+  geom_point(alpha = 0.6, color = "grey30") +
+  geom_smooth(method = "lm", formula = y ~ x, color = verde, fill = verde, alpha = 0.15) +
+  labs(x = "Gasto en publicidad", y = "Ventas",
+       title = sprintf("Ventas = %.2f + %.2f · publicidad   (R² = %.3f)",
+                       b1[1], b1[2], r2_1))
+```
+
+**Interpretación**
+
+- **Coeficiente de publicidad ($\hat\beta_1$ = `r f(b1[2])`).** Por cada unidad adicional de gasto en publicidad, las ventas aumentan en promedio `r f(b1[2])` unidades (IC 95%: `r f(ci1[2, 1])` a `r f(ci1[2, 2])`). El efecto es altamente significativo (t = `r f(s1$coefficients[2, 3])`, p `r fp(s1$coefficients[2, 4])`).
+- **Intercepto ($\hat\beta_0$ = `r f(b1[1])`).** Sería la venta esperada con publicidad igual a cero. Como el gasto observado va de `r f(min(ventas$publicidad), 1)` a `r f(max(ventas$publicidad), 1)`, ese valor es una extrapolación y no tiene interpretación práctica.
+- **R² = `r f(r2_1, 3)`.** El gasto en publicidad explica el `r pct(r2_1)` de la variabilidad de las ventas. El error estándar residual es `r f(s1$sigma)` unidades: es el error típico de una predicción.
+
+**¿Explica bien las ventas?** Sí. La relación es fuerte (r = `r f(r_xy, 3)`), positiva y estadísticamente significativa, y un solo predictor explica casi tres cuartas partes de la variación. Aun así, queda un `r pct(1 - r2_1)` sin explicar, lo que sugiere que hay otros factores, como el precio, que vale la pena incorporar.
+
+# Ejercicio 2: Regresión múltiple
+
+> Ajuste un modelo de regresión lineal múltiple con publicidad y precio como predictores. Compare el R² ajustado con el del ejercicio anterior. ¿Cuál variable aporta más a explicar las ventas?
+
+```{r ej2-modelo}
+mod2 <- lm(ventas ~ publicidad + precio, data = ventas)
+summary(mod2)
+```
+
+```{r ej2-tabla}
+kable(tabla_coef(mod2), digits = 3, caption = "Coeficientes del modelo múltiple con IC al 95%")
+```
+
+**Multicolinealidad (VIF):**
+
+```{r ej2-vif}
+vif(mod2)
+```
+
+**Comparación con el modelo simple:**
+
+```{r ej2-comparacion}
+resumen_modelo <- function(m, nombre) {
+  s <- summary(m)
+  data.frame(Modelo = nombre, Predictores = length(coef(m)) - 1,
+             R2 = s$r.squared, R2_ajustado = s$adj.r.squared,
+             RSE = s$sigma, AIC = AIC(m), BIC = BIC(m))
+}
+comp12 <- rbind(resumen_modelo(mod1, "M1: publicidad"),
+                resumen_modelo(mod2, "M2: publicidad + precio"))
+kable(comp12, digits = 4, row.names = FALSE)
+
+# Prueba F parcial: ¿precio mejora significativamente el modelo?
+anova(mod1, mod2)
+```
+
+**¿Qué variable aporta más?** Los coeficientes crudos no son comparables porque cada variable tiene su propia escala. Se comparan entonces los coeficientes estandarizados, la suma de cuadrados tipo II (lo que cada variable aporta controlando por la otra) y el R² parcial.
+
+```{r ej2-importancia}
+# Coeficientes estandarizados: cambio en DE de ventas por 1 DE del predictor
+mod2_std <- lm(scale(ventas) ~ scale(publicidad) + scale(precio), data = ventas)
+beta_std <- coef(mod2_std)[-1]
+
+# Suma de cuadrados tipo II y R² parcial
+a2   <- Anova(mod2, type = 2)
+sce  <- a2["Residuals", "Sum Sq"]
+ss   <- a2[c("publicidad", "precio"), "Sum Sq"]
+importancia <- data.frame(
+  Variable          = c("publicidad", "precio"),
+  `Beta estandarizado` = beta_std,
+  `t`               = summary(mod2)$coefficients[-1, 3],
+  `SC tipo II`      = ss,
+  `R² parcial`      = ss / (ss + sce),
+  check.names = FALSE
+)
+kable(importancia, digits = 3, row.names = FALSE)
+```
+
+```{r ej2-extraer, include=FALSE}
+s2   <- summary(mod2)
+b2   <- coef(mod2)
+ci2  <- confint(mod2)
+f12  <- anova(mod1, mod2)
+vif2 <- vif(mod2)
+r2p  <- importancia$`R² parcial`
+```
+
+**Interpretación**
+
+- **Publicidad ($\hat\beta_1$ = `r f(b2["publicidad"])`).** Manteniendo el precio constante, cada unidad adicional de publicidad se asocia con `r f(b2["publicidad"])` unidades más de ventas (IC 95%: `r f(ci2["publicidad", 1])` a `r f(ci2["publicidad", 2])`). El coeficiente casi no cambia respecto al modelo simple (`r f(b1[2])`) porque publicidad y precio son prácticamente independientes (VIF = `r f(vif2[1], 3)`).
+- **Precio ($\hat\beta_2$ = `r f(b2["precio"])`).** Manteniendo la publicidad constante, cada unidad adicional de precio se asocia con una caída promedio de `r f(abs(b2["precio"]))` unidades en ventas (IC 95%: `r f(ci2["precio", 1])` a `r f(ci2["precio", 2])`, p `r fp(s2$coefficients["precio", 4])`).
+- **R² ajustado.** Pasa de `r f(summary(mod1)$adj.r.squared, 4)` (M1) a `r f(s2$adj.r.squared, 4)` (M2), una mejora de `r f(100 * (s2$adj.r.squared - summary(mod1)$adj.r.squared), 1)` puntos porcentuales. El RSE baja de `r f(summary(mod1)$sigma)` a `r f(s2$sigma)`, y la prueba F parcial confirma que agregar precio mejora el ajuste de forma significativa (F = `r f(f12$F[2])`, p `r fp(f12[2, "Pr(>F)"])`). AIC y BIC también favorecen a M2.
+- **¿Cuál aporta más?** **La publicidad**, por amplio margen. Su coeficiente estandarizado es `r f(beta_std[1], 3)` frente a `r f(beta_std[2], 3)` del precio: una desviación estándar más de publicidad mueve las ventas `r f(beta_std[1] / abs(beta_std[2]), 1)` veces más que una desviación estándar de precio. Controlando por la otra variable, la publicidad explica el `r pct(r2p[1])` de la variación residual y el precio solo el `r pct(r2p[2])`. El precio aporta información real y significativa, pero complementaria.
+
+# Ejercicio 3: Variable categórica
+
+> Incluya la variable `region` como predictor en el modelo múltiple. Codifíquela correctamente como variable dummy. ¿Existe diferencia significativa en ventas entre regiones? Interprete los coeficientes.
+
+`region` tiene $k = 4$ categorías, así que entra al modelo como $k - 1 = 3$ variables indicadoras. Se convierte a `factor` y se fija **Norte** como categoría de referencia (por defecto R tomaría la primera en orden alfabético, *Este*).
+
+```{r ej3-factor}
+ventas$region <- factor(ventas$region, levels = c("Norte", "Sur", "Este", "Oeste"))
+contrasts(ventas$region)   # matriz de codificación dummy (tratamiento)
+
+# Las 3 columnas dummy que R construye internamente
+head(model.matrix(~ publicidad + precio + region, data = ventas))
+```
+
+```{r ej3-modelo}
+mod3 <- lm(ventas ~ publicidad + precio + region, data = ventas)
+summary(mod3)
+```
+
+```{r ej3-tabla}
+kable(tabla_coef(mod3), digits = 3, caption = "Coeficientes del modelo con región (referencia: Norte)")
+```
+
+**Prueba global de región.** Las pruebas t individuales solo comparan cada región contra Norte. Para saber si la región importa en conjunto se usa la prueba F parcial, que compara M2 con M3 (equivalente a la prueba tipo II de `Anova`):
+
+```{r ej3-pruebaF}
+anova(mod2, mod3)
+Anova(mod3, type = 2)
+```
+
+```{r ej3-comparacion}
+kable(rbind(resumen_modelo(mod2, "M2: publicidad + precio"),
+            resumen_modelo(mod3, "M3: publicidad + precio + región")),
+      digits = 4, row.names = FALSE)
+```
+
+```{r ej3-grafico, fig.cap="Residuos del modelo M2 (publicidad + precio) por región: lo que la región podría explicar después de controlar por publicidad y precio."}
+ventas$res_m2 <- residuals(mod2)
+ggplot(ventas, aes(region, res_m2)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "grey50") +
+  geom_boxplot(fill = verde, alpha = 0.15, outlier.shape = NA, color = verde) +
+  geom_jitter(width = 0.15, alpha = 0.5, color = "grey30") +
+  labs(x = "Región", y = "Residuo de M2")
+```
+
+```{r ej3-extraer, include=FALSE}
+b3  <- coef(mod3)
+p3  <- summary(mod3)$coefficients[, 4]
+f23 <- anova(mod2, mod3)
+```
+
+**Interpretación de los coeficientes** (todos manteniendo constantes publicidad y precio, y comparados con Norte):
+
+- **regionSur = `r f(b3["regionSur"])`:** en promedio, Sur vende `r f(abs(b3["regionSur"]))` unidades menos que Norte (p `r fp(p3["regionSur"])`).
+- **regionEste = `r f(b3["regionEste"])`:** Este vende `r f(b3["regionEste"])` unidades más que Norte (p `r fp(p3["regionEste"])`).
+- **regionOeste = `r f(b3["regionOeste"])`:** Oeste vende `r f(abs(b3["regionOeste"]))` unidades menos que Norte (p `r fp(p3["regionOeste"])`).
+- El intercepto ahora corresponde a la región Norte, y los efectos de publicidad (`r f(b3["publicidad"])`) y precio (`r f(b3["precio"])`) prácticamente no cambian al agregar la región.
+
+**¿Hay diferencia significativa entre regiones?** **No.** Ninguna diferencia individual es significativa, y la prueba F conjunta tampoco lo es (F = `r f(f23$F[2])` con 3 y `r f23$Res.Df[2]` gl, p `r fp(f23[2, "Pr(>F)"])`). Todas las diferencias son menores de 3 unidades, pequeñas frente al error típico de `r f(summary(mod3)$sigma)`. El R² ajustado sube de forma marginal (`r f(summary(mod2)$adj.r.squared, 4)` → `r f(summary(mod3)$adj.r.squared, 4)`), pero el BIC empeora. Por parsimonia se prefiere M2 sin región: una vez que se controla por publicidad y precio, la región no ayuda a explicar las ventas.
+
+# Ejercicio 4: Regresión logística
+
+> Use la variable `promo` (0 = sin promoción, 1 = con promoción) como variable dependiente. Ajuste un modelo logístico con publicidad y precio como predictores. Reporte los odds ratios e interprete el efecto del precio sobre la probabilidad de aplicar una promoción.
+
+```{r ej4-modelo}
+mod4 <- glm(promo ~ publicidad + precio, data = ventas,
+            family = binomial(link = "logit"))
+summary(mod4)
+```
+
+**Odds ratios con IC al 95%** (perfil de verosimilitud):
+
+```{r ej4-or}
+ic_or <- exp(confint(mod4))
+tab4 <- data.frame(
+  `B (logit)`  = coef(mod4),
+  OR           = exp(coef(mod4)),
+  `IC 2.5%`    = ic_or[, 1],
+  `IC 97.5%`   = ic_or[, 2],
+  `Valor p`    = summary(mod4)$coefficients[, 4],
+  check.names = FALSE
+)
+tab4_vista <- tab4[-1, ]   # el intercepto (odds con publicidad = precio = 0) no es interpretable
+tab4_vista$`Valor p` <- fpt(tab4_vista$`Valor p`)
+kable(tab4_vista, digits = 3)
+```
+
+**Significancia global** (razón de verosimilitudes contra el modelo nulo):
+
+```{r ej4-lr}
+mod4_nulo <- glm(promo ~ 1, data = ventas, family = binomial)
+anova(mod4_nulo, mod4, test = "Chisq")
+```
+
+**Efecto del precio en la escala de probabilidad.** El efecto marginal promedio es $\frac{\partial P}{\partial x} = \hat\beta \, p(1-p)$, promediado sobre las observaciones:
+
+```{r ej4-marginal}
+p_hat <- fitted(mod4)
+efecto_marginal <- coef(mod4)[-1] * mean(p_hat * (1 - p_hat))
+round(efecto_marginal, 4)
+```
+
+```{r ej4-curva, fig.cap="Probabilidad estimada de promoción según el precio, con la publicidad fija en su media. Banda: IC 95%. Puntos: observaciones (0/1) con dispersión vertical."}
+grid <- data.frame(precio = seq(13, 15.5, by = 0.05),
+                   publicidad = mean(ventas$publicidad))
+pr <- predict(mod4, newdata = grid, type = "link", se.fit = TRUE)
+grid$p   <- plogis(pr$fit)
+grid$lwr <- plogis(pr$fit - 1.96 * pr$se.fit)
+grid$upr <- plogis(pr$fit + 1.96 * pr$se.fit)
+
+ggplot(grid, aes(precio, p)) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), fill = verde, alpha = 0.15) +
+  geom_line(color = verde, linewidth = 1) +
+  geom_jitter(data = ventas, aes(precio, promo), width = 0, height = 0.03,
+              alpha = 0.4, color = "grey30") +
+  scale_y_continuous(limits = c(-0.05, 1.05), breaks = seq(0, 1, 0.25)) +
+  labs(x = "Precio", y = "P(promo = 1)")
+```
+
+**Capacidad de discriminación:**
+
+```{r ej4-roc, fig.width=5.5, fig.height=5.5}
+roc4 <- roc(ventas$promo, p_hat, quiet = TRUE)
+plot(roc4, col = verde, lwd = 2,
+     main = paste("Curva ROC | AUC =", round(auc(roc4), 3)))
+abline(a = 1, b = -1, lty = 2, col = "#94a3b8")
+ci.auc(roc4)
+```
+
+```{r ej4-extraer, include=FALSE}
+or_pr  <- tab4["precio", ]
+or_pub <- tab4["publicidad", ]
+lr4    <- anova(mod4_nulo, mod4, test = "Chisq")
+auc4   <- auc(roc4)
+ci_auc <- ci.auc(roc4)
+```
+
+**Interpretación**
+
+- **Odds ratio del precio = `r f(or_pr$OR, 3)`.** Manteniendo constante la publicidad, cada unidad adicional de precio multiplica los odds de aplicar una promoción por `r f(or_pr$OR, 3)`, es decir, los **reduce en un `r pct(1 - or_pr$OR, 0)`**. En la escala de probabilidad equivale a unos `r f(abs(100 * efecto_marginal["precio"]), 1)` puntos porcentuales menos de probabilidad de promoción por unidad de precio (efecto marginal promedio).
+- **Pero el efecto no es estadísticamente significativo.** El IC 95% del OR va de `r f(or_pr[["IC 2.5%"]], 3)` a `r f(or_pr[["IC 97.5%"]], 3)` e **incluye el 1**, y p `r fp(or_pr[["Valor p"]])`. Los datos no permiten afirmar que el precio cambie la probabilidad de aplicar una promoción: el signo negativo bien puede deberse al azar.
+- **Publicidad:** OR = `r f(or_pub$OR, 3)` (IC 95%: `r f(or_pub[["IC 2.5%"]], 3)` a `r f(or_pub[["IC 97.5%"]], 3)`, p `r fp(or_pub[["Valor p"]])`). Tampoco tiene un efecto apreciable.
+- **Modelo en conjunto:** la prueba de razón de verosimilitudes contra el modelo nulo no es significativa (X2 = `r f(lr4$Deviance[2])`, 2 gl, p `r fp(lr4[2, "Pr(>Chi)"])`), y el AUC = `r f(auc4, 3)` (IC 95%: `r f(ci_auc[1], 3)` a `r f(ci_auc[3], 3)`) no se distingue de 0.5, que es la discriminación de una moneda al aire.
+
+**Conclusión:** ni el precio ni la publicidad permiten anticipar si se aplica una promoción. El resultado es coherente con cómo se generaron los datos: `promo` se asignó con `sample()`, independiente de las demás variables. Además, aunque hubiera asociación, el modelo solo mediría eso; la dirección causal (si el precio lleva a promocionar o si la promoción se refleja en el precio) no se puede establecer con estos datos.
+
+# Ejercicio 5: Diagnóstico y comunicación
+
+> Para el modelo múltiple del ejercicio 2, genere los gráficos de diagnóstico (residuales vs. ajustados, Q-Q de residuales, escala-localización). Identifique si se cumplen los supuestos de linealidad, homocedasticidad y normalidad. Redacte una conclusión de dos párrafos como si fuera para un informe de negocio.
+
+## Gráficos de diagnóstico
+
+```{r ej5-diagnostico, fig.width=9, fig.height=8, fig.cap="Diagnóstico del modelo M2: residuos vs. ajustados, Q-Q normal, escala-localización y residuos vs. apalancamiento (con contornos de Cook)."}
+par(mfrow = c(2, 2), mar = c(4.5, 4.5, 2.5, 1))
+plot(mod2, which = c(1, 2, 3, 5), col = adjustcolor("grey30", 0.6), pch = 19)
+par(mfrow = c(1, 1))
+```
+
+Gráficos de componente + residuo, para revisar la linealidad de cada predictor por separado:
+
+```{r ej5-crplots, fig.width=9, fig.height=4.2}
+crPlots(mod2, layout = c(1, 2), main = "Componente + residuo")
+```
+
+## Pruebas formales
+
+```{r ej5-pruebas}
+reset <- resettest(mod2, power = 2:3)       # linealidad (Ramsey RESET)
+bp    <- bptest(mod2)                       # homocedasticidad vs. predictores
+ncv   <- ncvTest(mod2)                      # homocedasticidad vs. valores ajustados
+sw    <- shapiro.test(residuals(mod2))      # normalidad
+dw    <- dwtest(mod2)                       # independencia (autocorrelación)
+
+pruebas <- data.frame(
+  Supuesto    = c("Linealidad", "Homocedasticidad", "Homocedasticidad",
+                  "Normalidad", "Independencia"),
+  Prueba      = c("RESET de Ramsey", "Breusch-Pagan (studentizada)",
+                  "Score test sobre ajustados (ncvTest)", "Shapiro-Wilk",
+                  "Durbin-Watson"),
+  Estadístico = c(reset$statistic, bp$statistic, ncv$ChiSquare,
+                  sw$statistic, dw$statistic),
+  `Valor p`   = c(reset$p.value, bp$p.value, ncv$p, sw$p.value, dw$p.value),
+  check.names = FALSE
+)
+pruebas$Decisión <- ifelse(pruebas$`Valor p` < 0.05,
+                           "Se rechaza H0 (α = 5%)", "No se rechaza H0")
+kable(pruebas, digits = 3, row.names = FALSE)
+```
+
+Como una de las dos pruebas de homocedasticidad sale significativa, se comparan los errores estándar clásicos con los robustos a heterocedasticidad (HC3):
+
+```{r ej5-robustos}
+ct_clasico <- coeftest(mod2)
+ct_hc3     <- coeftest(mod2, vcov. = vcovHC(mod2, type = "HC3"))
+kable(data.frame(
+  Estimación     = ct_clasico[, 1],
+  `EE clásico`   = ct_clasico[, 2],
+  `EE HC3`       = ct_hc3[, 2],
+  `p clásico`    = fpt(ct_clasico[, 4]),
+  `p HC3`        = fpt(ct_hc3[, 4]),
+  check.names = FALSE
+), digits = 3)
+```
+
+## Observaciones influyentes
+
+```{r ej5-cook, fig.height=4}
+cook   <- cooks.distance(mod2)
+umbral <- 4 / nrow(ventas)
+plot(cook, type = "h", col = ifelse(cook > umbral, "#b91c1c", "grey50"), lwd = 2,
+     xlab = "Observación", ylab = "Distancia de Cook",
+     main = "Distancia de Cook (línea: 4/n)")
+abline(h = umbral, lty = 2)
+which(cook > umbral)
+outlierTest(mod2)
+
+# Sensibilidad: ¿cambian los coeficientes sin esas observaciones?
+mod2_sin <- update(mod2, subset = cook <= umbral)
+round(rbind(`Con todas` = coef(mod2), `Sin influyentes` = coef(mod2_sin)), 3)
+```
+
+```{r ej5-extraer, include=FALSE}
+n_inf <- sum(cook > umbral)
+```
+
+## Evaluación de los supuestos
+
+- **Linealidad: se cumple.** En *Residuals vs Fitted* los residuos forman una nube aleatoria alrededor de cero, sin arco ni patrón, y la curva suavizada es casi horizontal. Los gráficos de componente + residuo muestran relaciones lineales para publicidad y para precio, y la prueba RESET no detecta términos no lineales omitidos (p `r fp(reset$p.value)`).
+- **Homocedasticidad: se cumple de forma aproximada.** En *Scale-Location* la línea sube en el tramo de ventas predichas bajas (por debajo de unas 80 unidades) y luego se estabiliza. Es decir, la dispersión de los errores es algo menor cuando las ventas esperadas son bajas, sin llegar a formar un embudo marcado. La prueba de Breusch-Pagan no rechaza la varianza constante (p `r fp(bp$p.value)`), pero el *score test* sobre los valores ajustados sí la rechaza al 5% (p `r fp(ncv$p)`). Es una evidencia mixta de heterocedasticidad leve. En la práctica no afecta las conclusiones: con errores estándar robustos HC3, publicidad y precio siguen siendo significativos (p `r fp(ct_hc3["publicidad", 4])` y p `r fp(ct_hc3["precio", 4])`).
+- **Normalidad: se cumple.** En el Q-Q los puntos siguen de cerca la diagonal, sin colas pesadas, y Shapiro-Wilk no rechaza la normalidad (W = `r f(sw$statistic, 3)`, p `r fp(sw$p.value)`).
+- **Independencia y puntos influyentes.** Durbin-Watson = `r f(dw$statistic)` (p `r fp(dw$p.value)`) no indica autocorrelación. Ninguna observación tiene distancia de Cook mayor que 1 (máximo `r f(max(cook), 3)`). Hay `r n_inf` puntos por encima de la señal de alerta 4/n, pero ninguno es atípico según la prueba de Bonferroni. Al excluirlos, los coeficientes cambian poco (publicidad de `r f(coef(mod2)["publicidad"])` a `r f(coef(mod2_sin)["publicidad"])`, precio de `r f(coef(mod2)["precio"])` a `r f(coef(mod2_sin)["precio"])`) y siguen dentro de sus intervalos de confianza.
+
+## Conclusión para el informe de negocio
+
+El análisis de los `r nrow(ventas)` registros muestra que **la inversión en publicidad es el principal motor de las ventas**. Con el precio constante, cada unidad adicional de gasto publicitario se asocia con unas **`r f(b2["publicidad"], 1)` unidades más de ventas** (entre `r f(ci2["publicidad", 1], 1)` y `r f(ci2["publicidad", 2], 1)` con 95% de confianza). El precio tiene un efecto contrario y más moderado: cada unidad de aumento en el precio se asocia con unas **`r f(abs(b2["precio"]), 1)` unidades menos de ventas**. Juntas, estas dos palancas explican cerca del **`r pct(s2$r.squared, 0)` de la variación de las ventas**, con un error típico de pronóstico de ±`r f(s2$sigma, 1)` unidades. En términos prácticos, subir el precio en una unidad puede compensarse, en volumen, con unas `r f(abs(b2["precio"]) / b2["publicidad"])` unidades adicionales de inversión publicitaria. Esa compensación sirve para evaluar en conjunto la estrategia de precios y el presupuesto de mercadeo.
+
+Las pruebas de validez respaldan estas cifras. La relación entre las variables es lineal, los errores se comportan como se espera y ningún registro aislado distorsiona los resultados. La única alerta, una leve variación en la dispersión de los errores, se revisó con un método robusto y no cambia ninguna conclusión. Se recomienda **priorizar la inversión publicitaria** y **evaluar cualquier alza de precio frente a la pérdida de volumen que implica**, con dos precauciones. Primero, el modelo mide asociación y no causalidad: antes de reasignar presupuestos grandes conviene confirmar el efecto con un piloto controlado. Segundo, las estimaciones solo son válidas dentro de los rangos observados (publicidad entre `r f(min(ventas$publicidad), 1)` y `r f(max(ventas$publicidad), 1)`, precio entre `r f(min(ventas$precio), 1)` y `r f(max(ventas$precio), 1)`). El `r pct(1 - s2$r.squared, 0)` de la variación que queda sin explicar sugiere incorporar más adelante otras variables, como estacionalidad o acciones de la competencia.
+
+# Anexo: comparación con el proceso generador
+
+Como los datos son simulados, se conoce el modelo verdadero: $\text{ventas} = 100 + 18\,\text{publicidad} - 5\,\text{precio} + \varepsilon$, con $\varepsilon \sim N(0, 8^2)$. `region` y `promo` se asignaron al azar.
+
+```{r anexo}
+kable(data.frame(
+  Parámetro  = c("Intercepto", "publicidad", "precio", "σ (error)"),
+  Verdadero  = c(100, 18, -5, 8),
+  Estimado   = c(coef(mod2), summary(mod2)$sigma),
+  `IC 2.5%`  = c(confint(mod2)[, 1], NA),
+  `IC 97.5%` = c(confint(mod2)[, 2], NA),
+  check.names = FALSE
+), digits = 2, row.names = FALSE)
+```
+
+Todos los intervalos de confianza contienen el valor verdadero. Los resultados nulos para región (ejercicio 3) y promoción (ejercicio 4) son los esperados, porque esas variables no intervienen en la generación de las ventas.
+
+# Información de la sesión
+
+```{r sesion}
+sessionInfo()
+```
