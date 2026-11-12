@@ -1,5 +1,38 @@
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(rvest, httr2, jsonlite, DBI, RSQLite, dplyr, stringr, purrr, tibble, chromote)
+# scraper.R — Taller 2 (refactor del módulo de extracción del Taller 1)
+#
+# Cambios respecto al Taller 1:
+#  * library() en vez de pacman (rsconnect detecta los paquetes al desplegar).
+#  * chromote (Farmatodo) protegido: si no está, o no hay Chrome, se informa
+#    con claridad y se sigue con los demás comercios.
+#  * Cada ejecución tiene id y carpeta raw propios: comercio_AAAA-MM-DD_HHMMSS
+#    (las dos ejecuciones antiguas conservan comercio_AAAA-MM-DD).
+#  * Validación antes de insertar (validacion.R); rechazadas -> tabla `rechazadas`.
+#  * Inserción de cada comercio dentro de una transacción.
+#  * Resumen por comercio: recolectados, nuevos, cambios de precio, no observados.
+#  * Tabla `correcciones` y columnas de auditoría en `ejecuciones`.
+
+library(rvest)
+library(httr2)
+library(jsonlite)
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(tibble)
+
+if (!exists("validar_observaciones", mode = "function")) {
+  for (r in c("validacion.R", "../validacion.R")) {
+    if (file.exists(r)) { source(r); break }
+  }
+}
+if (!exists("migrar_esquema", mode = "function")) {
+  for (r in c("esquema.R", "../esquema.R")) {
+    if (file.exists(r)) { source(r); break }
+  }
+}
+
+USER_AGENT_SCRAPER <- "TallerMineriaDatos (ejercicio academico, no comercial)"
 
 # ---- Constantes de Farmatodo -----------------------------------------
 
@@ -9,7 +42,6 @@ base_farmatodo  <- paste0(sitio_farmatodo,
 
 # Subcategorías a recolectar. Quedan FUERA (no son de la categoría asignada):
 # "jeringas-guantes-y-material-hosp" y "aparatos-medicos-y-pastilleros".
-# La exclusión fina (guantes, tapabocas, etc.) se hace después, en la limpieza.
 slugs_farmatodo <- c(
   "curitas-algodones-adhesivos-y-botiquin",
   "antisepticos",
@@ -24,6 +56,10 @@ ahora_iso <- function() {
   sub("(\\d{2})$", ":\\1", x)
 }
 
+# Identificador de una actualización (se comparte entre los comercios):
+# también es el nombre de la carpeta en raw/<comercio>/
+sello_captura <- function() format(Sys.time(), "%Y-%m-%d_%H%M%S", tz = "America/Bogota")
+
 # ---- Parser: de cada tarjeta de producto a una fila -------------------
 
 parsear_farmatodo <- function(pagina, subcategoria, id_ejecucion, ts) {
@@ -37,11 +73,6 @@ parsear_farmatodo <- function(pagina, subcategoria, id_ejecucion, ts) {
     href     <- dplyr::coalesce(href_det, href_img)
     sku_card <- str_match(html_attr(t, "data-test"), "product-card-(\\d+)")[, 2]
     sku      <- dplyr::coalesce(str_match(href, "/producto/(\\d+)")[, 2], sku_card)
-
-    if (is.na(href)) {   
-      cat("\n!! Tarjeta SIN enlace (", subcategoria, ") SKU por data-test:", sku_card, "\n",
-          substr(as.character(t), 1, 1500), "\n")
-    }
 
     bloque <- trimws(html_text2(html_element(t, "app-product-all-price")))
     montos <- as.numeric(gsub("[^0-9]", "",
@@ -78,13 +109,11 @@ scrape_subcat_live <- function(slug, id_ejecucion = "prueba", max_clics = 60,
   on.exit(s$session$close(), add = TRUE)
   Sys.sleep(5)
 
-  # productos únicos en pantalla
   contar <- function() {
     s |> html_elements("a.product-card-handler__detail-description") |>
       html_attr("href") |> unique() |> length()
   }
 
-  # pulsa el botón "Cargar más" buscándolo por su texto
   clic_cargar_mas <- function() {
     r <- s$session$Runtime$evaluate("
       (() => {
@@ -138,7 +167,6 @@ parsear_desde_raw <- function(archivo, slug, id_ejecucion = "offline") {
   html <- paste(readLines(gzfile(archivo), encoding = "UTF-8", warn = FALSE),
                 collapse = "\n")
   pagina <- read_html(charToRaw(html), encoding = "UTF-8")
-  # la fecha-hora es la de la captura original, no la de hoy
   archivo_ts <- sub("\\.html\\.gz$", ".ts.txt", archivo)
   ts <- if (file.exists(archivo_ts)) readLines(archivo_ts, warn = FALSE)[1] else NA_character_
   df <- parsear_farmatodo(pagina, slug, id_ejecucion, ts)
@@ -146,22 +174,34 @@ parsear_desde_raw <- function(archivo, slug, id_ejecucion = "offline") {
   df
 }
 
-# ---- Recolección completa de Farmatodo con una llamada -----------------
+# ---- Recolección completa de Farmatodo ---------------------------------
+# Un fallo en una subcategoría no frena las demás; los errores quedan en
+# attr(resultado, "errores") para mostrarlos en el resumen.
 
 recolectar_farmatodo <- function(id_ejecucion, dir_raw,
                                  modo = c("online", "offline"),
                                  slugs = slugs_farmatodo) {
   modo <- match.arg(modo)
+  errores <- character()
 
   if (modo == "online") {
-    # un fallo en una subcategoría no frena las demás, pero se muestra el error
-    seguro <- possibly(scrape_subcat_live, otherwise = tibble(), quiet = FALSE)
-    res <- map(slugs, function(s) seguro(s, id_ejecucion = id_ejecucion, dir_raw = dir_raw))
+    if (!requireNamespace("chromote", quietly = TRUE)) {
+      stop("Farmatodo necesita un navegador automatizado (paquete chromote), ",
+           "que no está disponible en este entorno. Use el modo sin conexión.")
+    }
+    res <- map(slugs, function(s) {
+      tryCatch(
+        scrape_subcat_live(s, id_ejecucion = id_ejecucion, dir_raw = dir_raw),
+        error = function(e) {
+          errores <<- c(errores, paste0(s, ": ", conditionMessage(e)))
+          tibble()
+        })
+    })
   } else {
     res <- map(slugs, function(s) {
       f <- file.path(dir_raw, paste0(s, ".html.gz"))
       if (!file.exists(f)) {
-        warning("No existe la copia cruda: ", f)
+        errores <<- c(errores, paste0("No existe la copia cruda: ", basename(f)))
         return(tibble())
       }
       parsear_desde_raw(f, s, id_ejecucion)
@@ -169,21 +209,22 @@ recolectar_farmatodo <- function(id_ejecucion, dir_raw,
   }
 
   names(res) <- slugs
-  bind_rows(res)
+  out <- bind_rows(res)
+  attr(out, "errores") <- errores
+  out
 }
 
 
-# SCRAPPING DE LA REBAJA Y LOCATEL
+# ---- La Rebaja y Locatel (servicio JSON de VTEX) -----------------------
 
 vtex_url <- function(dominio, ruta) {
   paste0("https://", dominio, "/api/catalog_system/pub/products/search/", ruta)
 }
 
-# Descarga un rango de productos
 descargar_vtex_pagina <- function(dominio, ruta, desde, hasta) {
   resp <- request(vtex_url(dominio, ruta)) |>
     req_url_query(`_from` = desde, `_to` = hasta) |>
-    req_user_agent("Mozilla/5.0 (taller universitario)") |>
+    req_user_agent(USER_AGENT_SCRAPER) |>
     req_retry(max_tries = 3) |>
     req_perform()
   cab   <- resp_header(resp, "resources")
@@ -191,25 +232,21 @@ descargar_vtex_pagina <- function(dominio, ruta, desde, hasta) {
   list(texto = resp_body_string(resp, encoding = "UTF-8"), total = total)
 }
 
-# De la lista de productos a una fila por SKU. Cada campo que no exista
-# queda en NA en lugar de producir un error.
 parsear_vtex <- function(productos, comercio, dominio, id_ejecucion, ts) {
   map_dfr(productos, function(p) {
     cats <- unlist(p$categories)
 
-    # Campos de especificación del producto (varían entre tiendas). Devuelve el
-    # texto ORIGINAL del primer campo cuyo nombre coincida, o NA si no existe.
     campo <- function(patron) {
       nm <- names(p)[str_detect(names(p), regex(patron, ignore_case = TRUE))]
       if (length(nm) == 0) return(NA_character_)
       paste(unlist(p[[nm[1]]]), collapse = " | ")
     }
-    presentacion <- campo("^Presentaci[oó]n$")                    
+    presentacion     <- campo("^Presentaci[oó]n$")
     contenido_cant   <- dplyr::coalesce(campo("^Cantidadunidadesmedida$"), campo("^PUM - Medida$"))
     contenido_unidad <- dplyr::coalesce(campo("^Unidadmedida$"), campo("^PUM - Unidad de Medida$"))
     pres_texto       <- campo("^Presentacionunidadmedida$")
     unidades_pack    <- campo("^ML_UnidadesPorPack$")
-    peso_origen      <- campo("^Peso$")                               
+    peso_origen      <- campo("^Peso$")
 
     map_dfr(p$items, function(it) {
       venta  <- pluck(it, "sellers", 1, .default = list())
@@ -221,7 +258,6 @@ parsear_vtex <- function(productos, comercio, dominio, id_ejecucion, ts) {
 
       # Sin precio vigente (agotado) => NA, nunca 0
       precio <- if (!is.na(precio_vtex) && precio_vtex > 0) precio_vtex else NA_real_
-      # Promoción: el precio de lista es mayor que el precio de venta
       antes  <- if (!is.na(precio) && !is.na(lista_vtex) && lista_vtex > precio) lista_vtex else NA_real_
 
       tibble(
@@ -243,7 +279,7 @@ parsear_vtex <- function(productos, comercio, dominio, id_ejecucion, ts) {
         categorias_origen     = if (length(cats) > 0) paste(cats, collapse = " ; ") else NA_character_,
         precio                = precio,
         precio_antes          = antes,
-        es_promocion          = as.integer(!is.na(antes)),  
+        es_promocion          = as.integer(!is.na(antes)),
         disponible            = as.integer(!is.na(stock) && stock > 0),
         vendedor              = as.character(pluck(venta, "sellerName", .default = NA)),
         url                   = as.character(pluck(p, "link", .default = NA)),
@@ -254,35 +290,42 @@ parsear_vtex <- function(productos, comercio, dominio, id_ejecucion, ts) {
   })
 }
 
-# Recolección completa de un comercio VTEX con UNA llamada.
-#   modo "online":  consulta el servicio, guarda cada respuesta en dir_raw
+# Recolección completa de un comercio VTEX.
+#   modo "online":  consulta el servicio y guarda cada respuesta en dir_raw
 #   modo "offline": reprocesa lo que haya en dir_raw, sin consultar el sitio
-# El total que declara el sitio queda en attr(resultado, "total_sitio").
+# max_paginas limita el número de peticiones por ejecución.
 recolectar_vtex <- function(comercio, dominio, ruta, id_ejecucion, dir_raw,
-                            modo = c("online", "offline"), paso = 50L) {
+                            modo = c("online", "offline"), paso = 50L,
+                            max_paginas = 20L) {
   modo  <- match.arg(modo)
   total <- NA_integer_
 
   if (modo == "online") {
     dir.create(dir_raw, recursive = TRUE, showWarnings = FALSE)
-    unlink(list.files(dir_raw, pattern = "^pag_\\d+\\.json(\\.gz)?$", full.names = TRUE))  # evita mezclar corridas
+    unlink(list.files(dir_raw, pattern = "^pag_\\d+\\.json(\\.gz)?$", full.names = TRUE))
     ts <- ahora_iso()
     writeLines(ts, file.path(dir_raw, "ts.txt"))
 
     desde <- 0L
+    n_pag <- 0L
     repeat {
       hasta <- desde + paso - 1L
       r <- descargar_vtex_pagina(dominio, ruta, desde, hasta)
+      n_pag <- n_pag + 1L
       total <- r$total
-      con_gz <- gzfile(file.path(dir_raw, sprintf("pag_%04d.json.gz", desde)), "w")   # copia cruda comprimida
+      con_gz <- gzfile(file.path(dir_raw, sprintf("pag_%04d.json.gz", desde)), "w")
       writeLines(r$texto, con_gz, useBytes = TRUE)
       close(con_gz)
       cat("  [", comercio, "] ", desde, "-", hasta, " de ", total, "\n", sep = "")
       if (is.na(total) || nchar(r$texto) <= 2 || hasta + 1L >= total) break
+      if (n_pag >= max_paginas) {
+        warning("Se alcanzó el máximo de peticiones (", max_paginas, ") en ", comercio)
+        break
+      }
       desde <- hasta + 1L
       Sys.sleep(1)
     }
-    writeLines(as.character(total), file.path(dir_raw, "total_sitio.txt"))   # total declarado por el sitio
+    writeLines(as.character(total), file.path(dir_raw, "total_sitio.txt"))
   } else {
     tot_file <- file.path(dir_raw, "total_sitio.txt")
     total <- if (file.exists(tot_file)) suppressWarnings(as.integer(readLines(tot_file, warn = FALSE)[1])) else NA_integer_
@@ -292,11 +335,10 @@ recolectar_vtex <- function(comercio, dominio, ruta, id_ejecucion, dir_raw,
 
   archivos <- sort(list.files(dir_raw, pattern = "^pag_\\d+\\.json(\\.gz)?$", full.names = TRUE))
   if (length(archivos) == 0) {
-    warning("No hay copias crudas en ", dir_raw)
-    return(tibble())
+    stop("No hay copias crudas en ", dir_raw)
   }
   productos <- unlist(map(archivos, function(f) {
-    txt <- paste(readLines(gzfile(f), encoding = "UTF-8", warn = FALSE), collapse = "\n") 
+    txt <- paste(readLines(gzfile(f), encoding = "UTF-8", warn = FALSE), collapse = "\n")
     jsonlite::fromJSON(txt, simplifyVector = FALSE)
   }), recursive = FALSE)
 
@@ -305,7 +347,7 @@ recolectar_vtex <- function(comercio, dominio, ruta, id_ejecucion, dir_raw,
   df
 }
 
-# Funciones por comercio
+# ---- Funciones por comercio --------------------------------------------
 
 columnas_estandar <- c(
   "comercio", "id_producto", "sku", "ean",
@@ -318,7 +360,8 @@ columnas_estandar <- c(
 )
 
 estandarizar_columnas <- function(df) {
-  total <- attr(df, "total_sitio")
+  total   <- attr(df, "total_sitio")
+  errores <- attr(df, "errores")
   if (nrow(df) > 0) {
     if (!"id_producto" %in% names(df)) df$id_producto <- df$sku
     if (!"disponible"  %in% names(df)) df$disponible  <- as.integer(!is.na(df$precio))
@@ -335,6 +378,7 @@ estandarizar_columnas <- function(df) {
   df[numericas] <- lapply(df[numericas], as.numeric)
   df[enteras]   <- lapply(df[enteras], as.integer)
   attr(df, "total_sitio") <- total
+  attr(df, "errores")     <- errores
   df
 }
 
@@ -355,12 +399,34 @@ scrape_locatel <- function(id_ejecucion, dir_raw, modo = c("online", "offline"))
                                         "drogueria/cuidado-heridas", id_ejecucion, dir_raw, modo))
 }
 
+# Catálogo de comercios: carpeta en raw/, prefijo del id de ejecución,
+# número de subcategorías esperadas y función de extracción.
+COMERCIOS <- list(
+  "Farmatodo" = list(carpeta = "farmatodo", prefijo = "farmatodo",
+                     n_sub = length(slugs_farmatodo), f = scrape_farmatodo),
+  "La Rebaja" = list(carpeta = "la_rebaja", prefijo = "larebaja",
+                     n_sub = NA_integer_, f = scrape_la_rebaja),
+  "Locatel"   = list(carpeta = "locatel",   prefijo = "locatel",
+                     n_sub = NA_integer_, f = scrape_locatel)
+)
 
+
+# ======================================================================
 # BASE DE DATOS SQLITE
+# ======================================================================
+
+agregar_columna_si_falta <- function(con, tabla, columna, tipo) {
+  cols <- DBI::dbGetQuery(con, paste0("PRAGMA table_info(", tabla, ")"))$name
+  if (!columna %in% cols) {
+    DBI::dbExecute(con, paste0("ALTER TABLE ", tabla, " ADD COLUMN ", columna, " ", tipo))
+  }
+  invisible(TRUE)
+}
 
 crear_base <- function(ruta_db) {
   con <- DBI::dbConnect(RSQLite::SQLite(), ruta_db)
   DBI::dbExecute(con, "PRAGMA foreign_keys = ON")
+  DBI::dbExecute(con, "PRAGMA busy_timeout = 10000")
 
   sentencias <- c(
     "CREATE TABLE IF NOT EXISTS comercios (
@@ -423,13 +489,54 @@ crear_base <- function(ruta_db) {
        disponible          INTEGER,
        vendedor            TEXT,
        UNIQUE (id_anuncio, fecha_hora_consulta)
+     )",
+
+    # Observaciones que no superaron la validación (no entran a `observaciones`)
+    "CREATE TABLE IF NOT EXISTS rechazadas (
+       id_rechazo          INTEGER PRIMARY KEY AUTOINCREMENT,
+       id_ejecucion        TEXT NOT NULL REFERENCES ejecuciones(id_ejecucion),
+       comercio            TEXT,
+       sku                 TEXT,
+       nombre_original     TEXT,
+       url                 TEXT,
+       precio              REAL,
+       fecha_hora_consulta TEXT,
+       motivo              TEXT NOT NULL,
+       fecha_registro      TEXT NOT NULL
+     )",
+
+    # Correcciones a datos ya almacenados (nunca se borran observaciones)
+    "CREATE TABLE IF NOT EXISTS correcciones (
+       id_correccion  INTEGER PRIMARY KEY AUTOINCREMENT,
+       fecha          TEXT NOT NULL,
+       tabla          TEXT NOT NULL,
+       registro       TEXT NOT NULL,
+       campo          TEXT NOT NULL,
+       valor_anterior TEXT,
+       valor_nuevo    TEXT,
+       motivo         TEXT NOT NULL
      )"
   )
   for (s in sentencias) DBI::dbExecute(con, s)
+
+  # Migración: columnas de auditoría de las ejecuciones (bases del Taller 1)
+  agregar_columna_si_falta(con, "ejecuciones", "modo", "TEXT")
+  agregar_columna_si_falta(con, "ejecuciones", "mensaje", "TEXT")
+  agregar_columna_si_falta(con, "ejecuciones", "rechazadas", "INTEGER")
+  agregar_columna_si_falta(con, "ejecuciones", "ruta_raw", "TEXT")
   con
 }
 
-# completa / parcial / fallida
+registrar_correccion <- function(con, tabla, registro, campo, valor_anterior,
+                                 valor_nuevo, motivo, fecha = ahora_iso()) {
+  DBI::dbExecute(con, "
+    INSERT INTO correcciones (fecha, tabla, registro, campo, valor_anterior, valor_nuevo, motivo)
+    VALUES (?, ?, ?, ?, ?, ?, ?)",
+    params = list(fecha, tabla, as.character(registro), campo,
+                  as.character(valor_anterior), as.character(valor_nuevo), motivo))
+}
+
+# completa / parcial / fallida (según lo recolectado, antes de validar)
 estado_ejecucion <- function(df, total_sitio = NA_integer_, n_subcats_esperadas = NA_integer_) {
   if (nrow(df) == 0) return("fallida")
   if (!is.na(total_sitio) && "id_producto" %in% names(df) &&
@@ -439,43 +546,56 @@ estado_ejecucion <- function(df, total_sitio = NA_integer_, n_subcats_esperadas 
   "completa"
 }
 
-# Registra la corrida de un comercio y devuelve el id del comercio
-registrar_ejecucion <- function(con, comercio, id_ejecucion, ts_inicio,
-                                registros, total_sitio, estado, productos = NA_integer_) {
+obtener_id_comercio <- function(con, comercio) {
   DBI::dbExecute(con, "INSERT OR IGNORE INTO comercios (nombre) VALUES (?)",
                  params = list(comercio))
-  id_com <- DBI::dbGetQuery(con, "SELECT id_comercio FROM comercios WHERE nombre = ?",
-                            params = list(comercio))$id_comercio
+  DBI::dbGetQuery(con, "SELECT id_comercio FROM comercios WHERE nombre = ?",
+                  params = list(comercio))$id_comercio
+}
+
+registrar_ejecucion <- function(con, id_com, id_ejecucion, ts_inicio, registros,
+                                productos, total_sitio, estado, modo, mensaje,
+                                rechazadas, ruta_raw) {
   DBI::dbExecute(con, "
-    INSERT INTO ejecuciones (id_ejecucion, id_comercio, fecha_hora_inicio, registros, productos, total_sitio, estado)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO ejecuciones
+      (id_ejecucion, id_comercio, fecha_hora_inicio, registros, productos,
+       total_sitio, estado, modo, mensaje, rechazadas, ruta_raw)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id_ejecucion) DO UPDATE SET
       fecha_hora_inicio = excluded.fecha_hora_inicio,
       registros         = excluded.registros,
       productos         = excluded.productos,
       total_sitio       = excluded.total_sitio,
-      estado            = excluded.estado",
+      estado            = excluded.estado,
+      modo              = COALESCE(ejecuciones.modo, excluded.modo),
+      mensaje           = excluded.mensaje,
+      rechazadas        = excluded.rechazadas,
+      ruta_raw          = excluded.ruta_raw",
     params = list(id_ejecucion, id_com, ts_inicio, as.integer(registros),
-                  as.integer(productos), as.integer(total_sitio), estado))
-  id_com
+                  as.integer(productos), as.integer(total_sitio), estado, modo,
+                  mensaje, as.integer(rechazadas), ruta_raw))
 }
 
-# Inserta anuncios y observaciones de una tabla de productos.
-# Devuelve cuántas observaciones NUEVAS se insertaron.
-cargar_observaciones <- function(con, df, id_com, id_ejecucion) {
+# Escribe las observaciones válidas en una tabla temporal. Se hace ANTES de
+# abrir la transacción (dbWriteTable abre la suya).
+preparar_carga <- function(con, df, id_com, id_ejecucion) {
   cols <- c("sku", "ean", "nombre_original", "descripcion_original", "marca_original",
             "presentacion_texto_origen", "contenido_origen", "contenido_unidad_origen",
             "subcategoria_origen", "url", "precio", "precio_antes", "es_promocion",
             "disponible", "vendedor", "fecha_hora_consulta")
-  for (f in setdiff(cols, names(df))) df[[f]] <- NA          # columnas que un comercio no trae
+  for (f in setdiff(cols, names(df))) df[[f]] <- NA
   if (all(is.na(df$disponible))) df$disponible <- as.integer(!is.na(df$precio))
   carga <- as.data.frame(df[, cols])
   carga$id_comercio  <- id_com
   carga$id_ejecucion <- id_ejecucion
-
   DBI::dbWriteTable(con, "tmp_carga", carga, temporary = TRUE, overwrite = TRUE)
+  invisible(nrow(carga))
+}
 
-  DBI::dbExecute(con, "
+# Dentro de la transacción: pasa de tmp_carga a anuncios y observaciones.
+# Devuelve cuántos anuncios y observaciones NUEVOS se insertaron.
+insertar_carga <- function(con) {
+  n_anuncios <- DBI::dbExecute(con, "
     INSERT OR IGNORE INTO anuncios
       (id_comercio, sku, ean, nombre_original, descripcion_original, marca_original,
        presentacion_texto_origen, contenido_origen, contenido_unidad_origen,
@@ -484,9 +604,7 @@ cargar_observaciones <- function(con, df, id_com, id_ejecucion) {
            presentacion_texto_origen, contenido_origen, contenido_unidad_origen,
            subcategoria_origen, url
     FROM tmp_carga")
-
-  antes <- DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM observaciones")$n
-  DBI::dbExecute(con, "
+  n_obs <- DBI::dbExecute(con, "
     INSERT OR IGNORE INTO observaciones
       (id_anuncio, id_ejecucion, fecha_hora_consulta, precio, precio_antes,
        es_promocion, disponible, vendedor)
@@ -494,76 +612,220 @@ cargar_observaciones <- function(con, df, id_com, id_ejecucion) {
            t.es_promocion, t.disponible, t.vendedor
     FROM tmp_carga t
     JOIN anuncios a ON a.id_comercio = t.id_comercio AND a.sku = t.sku")
-  despues <- DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM observaciones")$n
-
   DBI::dbExecute(con, "DROP TABLE IF EXISTS tmp_carga")
-  despues - antes
+  list(anuncios = n_anuncios, observaciones = n_obs)
 }
 
-# Registra la ejecución y carga una tabla ya obtenida (en memoria) de un comercio
-cargar_ejecucion <- function(con, df, comercio, ts_inicio = NULL, estado = NULL,
-                             n_subcats_esperadas = NA_integer_) {
+insertar_rechazadas <- function(con, rech, id_ejecucion) {
+  DBI::dbExecute(con, "
+    INSERT INTO rechazadas
+      (id_ejecucion, comercio, sku, nombre_original, url, precio,
+       fecha_hora_consulta, motivo, fecha_registro)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    params = list(rep(id_ejecucion, nrow(rech)), rech$comercio, rech$sku,
+                  rech$nombre_original, rech$url, rech$precio,
+                  rech$fecha_hora_consulta, rech$motivo,
+                  rep(ahora_iso(), nrow(rech))))
+}
+
+# ----------------------------------------------------------------------
+# Persistir UNA ejecución de UN comercio ya recolectada (df en memoria):
+# valida, inserta en transacción y devuelve el resumen de una fila.
+# ----------------------------------------------------------------------
+persistir_ejecucion <- function(con, comercio, id_ejecucion, df,
+                                total_sitio = NA_integer_, n_sub = NA_integer_,
+                                ts_inicio = NULL, modo = "online",
+                                ruta_raw = NA_character_, mensajes = character()) {
+  if (is.null(total_sitio)) total_sitio <- NA_integer_
+  if (is.null(ts_inicio)) {
+    ts_inicio <- if (nrow(df) > 0 && any(!is.na(df$fecha_hora_consulta)))
+      min(df$fecha_hora_consulta, na.rm = TRUE) else ahora_iso()
+  }
+
+  estado <- estado_ejecucion(df, total_sitio, n_sub)
+  if (nrow(df) > 0) {
+    val        <- validar_observaciones(df)
+    validas    <- val$validas
+    rechazadas <- val$rechazadas
+    faltan     <- comparables_faltantes(validas, comercio)
+    if (nrow(validas) == 0) {
+      estado   <- "fallida"
+      mensajes <- c(mensajes, "Ninguna observación superó la validación")
+    } else if (length(faltan) > 0) {
+      mensajes <- c(mensajes, paste0("Comparables ausentes o sin precio: ",
+                                     paste(faltan, collapse = ", ")))
+      if (estado == "completa") estado <- "parcial"
+    }
+  } else {
+    validas <- df; rechazadas <- tibble(); faltan <- integer(0)
+  }
+  productos <- if (nrow(df) > 0) n_distinct(df$id_producto) else 0L
+  mensaje   <- if (length(mensajes) > 0) paste(mensajes, collapse = " | ") else NA_character_
+
+  id_com <- obtener_id_comercio(con, comercio)
+  if (nrow(validas) > 0) preparar_carga(con, validas, id_com, id_ejecucion)
+
+  ins <- tryCatch({
+    DBI::dbWithTransaction(con, {
+      previo <- DBI::dbGetQuery(con,
+        "SELECT fecha_hora_inicio FROM ejecuciones WHERE id_ejecucion = ?",
+        params = list(id_ejecucion))
+      if (nrow(previo) == 1 && !is.na(previo$fecha_hora_inicio) &&
+          previo$fecha_hora_inicio != ts_inicio) {
+        registrar_correccion(con, "ejecuciones", id_ejecucion, "fecha_hora_inicio",
+          previo$fecha_hora_inicio, ts_inicio,
+          "La hora de inicio se había guardado al reprocesar raw/ sin conexión; se restituye la hora de la captura original (ts.txt)")
+      }
+      registrar_ejecucion(con, id_com, id_ejecucion, ts_inicio, nrow(df), productos,
+                          total_sitio, estado, modo, mensaje, nrow(rechazadas), ruta_raw)
+      DBI::dbExecute(con, "DELETE FROM rechazadas WHERE id_ejecucion = ?",
+                     params = list(id_ejecucion))
+      if (nrow(rechazadas) > 0) insertar_rechazadas(con, rechazadas, id_ejecucion)
+      if (nrow(validas) > 0) insertar_carga(con) else list(anuncios = 0L, observaciones = 0L)
+    })
+  }, error = function(e) e)
+
+  if (inherits(ins, "error")) {
+    # La transacción se revirtió: la base queda como estaba. Se deja constancia.
+    try(DBI::dbExecute(con, "DROP TABLE IF EXISTS tmp_carga"), silent = TRUE)
+    msg <- paste0("Falló la inserción (no se guardó nada): ", conditionMessage(ins))
+    try(registrar_ejecucion(con, id_com, id_ejecucion, ts_inicio, nrow(df), productos,
+                            total_sitio, "fallida", modo, msg, nrow(rechazadas), ruta_raw),
+        silent = TRUE)
+    return(tibble(comercio = comercio, id_ejecucion = id_ejecucion, estado = "fallida",
+                  recolectados = nrow(df), rechazados = nrow(rechazadas),
+                  productos_nuevos = 0L, observaciones_nuevas = 0L,
+                  cambios_precio = 0L, no_observados = 0L, mensaje = msg))
+  }
+
+  cambios <- 0L; no_obs <- 0L
+  if (estado != "fallida") {
+    cambios <- DBI::dbGetQuery(con, "
+      WITH previa AS (
+        SELECT o.id_observacion,
+               (SELECT p.precio FROM observaciones p
+                 WHERE p.id_anuncio = o.id_anuncio
+                   AND p.fecha_hora_consulta < o.fecha_hora_consulta
+                   AND p.precio IS NOT NULL
+                 ORDER BY p.fecha_hora_consulta DESC LIMIT 1) AS precio_prev
+        FROM observaciones o WHERE o.id_ejecucion = ?)
+      SELECT COUNT(*) AS n
+      FROM previa JOIN observaciones o USING (id_observacion)
+      WHERE previa.precio_prev IS NOT NULL AND o.precio IS NOT NULL
+        AND o.precio <> previa.precio_prev",
+      params = list(id_ejecucion))$n
+    no_obs <- DBI::dbGetQuery(con, "
+      WITH previa AS (
+        SELECT id_ejecucion FROM ejecuciones
+        WHERE id_comercio = ? AND fecha_hora_inicio < ? AND id_ejecucion <> ?
+        ORDER BY fecha_hora_inicio DESC LIMIT 1)
+      SELECT COUNT(*) AS n FROM observaciones o
+      WHERE o.id_ejecucion IN (SELECT id_ejecucion FROM previa)
+        AND o.id_anuncio NOT IN
+            (SELECT id_anuncio FROM observaciones WHERE id_ejecucion = ?)",
+      params = list(id_com, ts_inicio, id_ejecucion, id_ejecucion))$n
+  }
+
+  tibble(comercio = comercio, id_ejecucion = id_ejecucion, estado = estado,
+         recolectados = nrow(df), rechazados = nrow(rechazadas),
+         productos_nuevos = as.integer(ins$anuncios),
+         observaciones_nuevas = as.integer(ins$observaciones),
+         cambios_precio = as.integer(cambios), no_observados = as.integer(no_obs),
+         mensaje = if (is.na(mensaje)) "" else mensaje)
+}
+
+# Recolecta (o reprocesa) un comercio y lo persiste. NULL si no hay copia
+# cruda para esa captura en modo sin conexión.
+procesar_comercio <- function(con, comercio, modo, captura, dir_proyecto = ".") {
+  def      <- COMERCIOS[[comercio]]
+  id       <- paste0(def$prefijo, "_", captura)
+  dir_raw  <- file.path(dir_proyecto, "raw", def$carpeta, captura)
+  ruta_raw <- file.path("raw", def$carpeta, captura)
+  if (modo == "offline" && !dir.exists(dir_raw)) return(NULL)
+
+  cat("\n== ", comercio, " (", modo, ", ", captura, ") ==\n", sep = "")
+  ts_inicio <- if (modo == "online") ahora_iso() else NULL
+  res <- tryCatch(list(df = def$f(id, dir_raw, modo), error = NA_character_),
+                  error = function(e) list(df = tibble(), error = conditionMessage(e)))
+  df <- res$df
+  mensajes <- c(if (!is.na(res$error)) res$error, attr(df, "errores"))
   total <- attr(df, "total_sitio")
-  if (is.null(total)) total <- NA_integer_
-  id_ejecucion <- if (nrow(df) > 0) df$id_ejecucion[1] else paste0(comercio, "_fallida_", format(Sys.time(), "%Y%m%d%H%M%S"))
-  if (is.null(ts_inicio)) ts_inicio <- if (nrow(df) > 0) min(df$fecha_hora_consulta, na.rm = TRUE) else ahora_iso()
-  if (is.null(estado)) estado <- estado_ejecucion(df, total, n_subcats_esperadas)
 
-  productos <- if (nrow(df) > 0 && "id_producto" %in% names(df)) length(unique(df$id_producto)) else nrow(df)
-  id_com <- registrar_ejecucion(con, comercio, id_ejecucion, ts_inicio, nrow(df), total, estado, productos)
-  nuevas <- if (nrow(df) > 0) cargar_observaciones(con, df, id_com, id_ejecucion) else 0L
-  cat("  [", comercio, "] ", estado, ": ", nrow(df), " filas, ", nuevas, " observaciones nuevas\n", sep = "")
-  invisible(nuevas)
+  out <- persistir_ejecucion(con, comercio, id, df, total_sitio = total,
+                             n_sub = def$n_sub, ts_inicio = ts_inicio, modo = modo,
+                             ruta_raw = ruta_raw, mensajes = mensajes)
+  cat("  [", comercio, "] ", out$estado, ": ", out$recolectados, " recolectados, ",
+      out$observaciones_nuevas, " observaciones nuevas, ", out$rechazados,
+      " rechazadas\n", sep = "")
+  out
 }
 
+# Lista las carpetas de captura (una por ejecución) de un comercio
+listar_capturas <- function(dir_proyecto, carpeta) {
+  d <- file.path(dir_proyecto, "raw", carpeta)
+  if (!dir.exists(d)) return(character())
+  sort(list.dirs(d, full.names = FALSE, recursive = FALSE))
+}
 
-# FUNCIÓN GENERAL: recolecta los tres comercios, registra cada ejecución
-# e inserta los datos en la base SQLite. UNA sola llamada.
-
-
-ejecutar_recoleccion_completa <- function(dir_proyecto,
-                                          ruta_db = file.path(dir_proyecto, "comparador_precios.sqlite"),
-                                          modo = c("online", "offline"),
-                                          fecha = format(Sys.time(), "%Y-%m-%d", tz = "America/Bogota")) {
+# ----------------------------------------------------------------------
+# FUNCIÓN GENERAL (la que llama el botón de la aplicación)
+#   modo "online":  una captura nueva de todos los comercios
+#   modo "offline": reprocesa TODAS las capturas guardadas en raw/
+# Si un comercio falla, continúa con los demás. Devuelve el resumen por comercio.
+# ----------------------------------------------------------------------
+ejecutar_recoleccion <- function(dir_proyecto = ".",
+                                 ruta_db = file.path(dir_proyecto, "comparador_precios.sqlite"),
+                                 modo = c("online", "offline"),
+                                 comercios = names(COMERCIOS),
+                                 captura = NULL, progreso = NULL) {
   modo <- match.arg(modo)
   con  <- crear_base(ruta_db)
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  trabajos <- list(
-    list(comercio = "Farmatodo", carpeta = "farmatodo", id = paste0("farmatodo_", fecha),
-         n_sub = length(slugs_farmatodo),
-         f = function(id, dir) scrape_farmatodo(id, dir, modo)),
-    list(comercio = "La Rebaja", carpeta = "la_rebaja", id = paste0("larebaja_", fecha),
-         n_sub = NA_integer_,
-         f = function(id, dir) scrape_la_rebaja(id, dir, modo)),
-    list(comercio = "Locatel", carpeta = "locatel", id = paste0("locatel_", fecha),
-         n_sub = NA_integer_,
-         f = function(id, dir) scrape_locatel(id, dir, modo))
-  )
-
-  resultados <- list()
-  for (tr in trabajos) {
-    cat("\n== ", tr$comercio, " (", modo, ") ==\n", sep = "")
-    ts_inicio <- ahora_iso()
-    dir_raw   <- file.path(dir_proyecto, "raw", tr$carpeta, fecha)
-    if (modo == "offline" && !dir.exists(dir_raw)) {
-      cat("  sin copia cruda para esta fecha; se omite\n")
-      next
-    }
-    df <- tryCatch(tr$f(tr$id, dir_raw), error = function(e) {
-      message("FALLÓ ", tr$comercio, ": ", conditionMessage(e))
-      tibble()
-    })
-    cargar_ejecucion(con, df, tr$comercio, ts_inicio = ts_inicio,
-                     n_subcats_esperadas = tr$n_sub)
-    resultados[[tr$comercio]] <- df
+  capturas <- if (modo == "online") {
+    if (is.null(captura)) sello_captura() else captura
+  } else if (!is.null(captura)) {
+    captura
+  } else {
+    sort(unique(unlist(lapply(comercios, function(c)
+      listar_capturas(dir_proyecto, COMERCIOS[[c]]$carpeta)))))
   }
-  aplicar_exclusiones(con)        # delimitación de la categoría
-  estandarizar_anuncios(con)      # marca, nombre y subcategoría estandarizados
-  invisible(resultados)
+
+  resumen <- list()
+  for (cap in capturas) {
+    for (cm in comercios) {
+      if (is.function(progreso)) progreso(cm)
+      r <- procesar_comercio(con, cm, modo, cap, dir_proyecto)
+      if (!is.null(r)) resumen[[length(resumen) + 1]] <- r
+    }
+  }
+  resumen <- bind_rows(resumen)
+
+  if (nrow(resumen) > 0 && any(resumen$estado != "fallida")) {
+    aplicar_exclusiones(con)
+    estandarizar_anuncios(con)
+    # Re-enlaza los comparables; si una regla ya no encuentra su anuncio, avisa
+    # pero conserva el enlace anterior.
+    tryCatch(resolver_comparables(con, ruta_csv = NULL),
+             error = function(e) warning("Comparables no re-enlazados: ", conditionMessage(e)))
+    # Contenido normalizado, índices y vistas (idempotente)
+    if (exists("migrar_esquema", mode = "function")) migrar_esquema(con)
+  }
+  invisible(resumen)
 }
 
+# Compatibilidad con el Taller 1 (README anterior)
+ejecutar_recoleccion_completa <- function(dir_proyecto,
+                                          ruta_db = file.path(dir_proyecto, "comparador_precios.sqlite"),
+                                          modo = c("online", "offline"), fecha = NULL) {
+  ejecutar_recoleccion(dir_proyecto, ruta_db, match.arg(modo), captura = fecha)
+}
+
+
+# ======================================================================
 # DELIMITACIÓN DE LA CATEGORÍA Y CORRESPONDENCIA DE PRODUCTOS
+# (sin cambios respecto al Taller 1)
+# ======================================================================
 
 reglas_exclusion <- tibble::tribble(
   ~motivo,                                                  ~campo,                ~patron,
@@ -577,7 +839,6 @@ reglas_exclusion <- tibble::tribble(
   "Antisépticos de manos (no son para heridas)",            "nombre_original",     "antibacterial|glicerinad|desinfectante de manos"
 )
 
-# Marca en anuncios.incluido / motivo_exclusion según las reglas anteriores
 aplicar_exclusiones <- function(con) {
   a <- DBI::dbGetQuery(con, "SELECT id_anuncio, nombre_original, subcategoria_origen FROM anuncios")
   a$motivo <- NA_character_
@@ -596,11 +857,6 @@ aplicar_exclusiones <- function(con) {
   invisible(nrow(excl))
 }
 
-# Carga la tabla de correspondencia (comparables.csv, una fila por producto y
-# comercio) en productos_comparables y la enlaza con anuncios.
-
-# Columnas del CSV: id_comparable, nombre_comun, marca_comun, contenido_valor,
-# contenido_unidad, comercio, sku, regla
 cargar_comparables <- function(con, ruta_csv) {
   if (!file.exists(ruta_csv)) stop("Falta el archivo de correspondencia: ", ruta_csv)
   cmp <- utils::read.csv(ruta_csv, stringsAsFactors = FALSE, encoding = "UTF-8",
@@ -612,7 +868,6 @@ cargar_comparables <- function(con, ruta_csv) {
   cargar_comparables_df(con, cmp)
 }
 
-# Enlaza una tabla de correspondencia (data.frame) con la base
 cargar_comparables_df <- function(con, cmp) {
   DBI::dbExecute(con, "UPDATE anuncios SET id_comparable = NULL, comparable = 0,
                        contenido_valor = NULL, contenido_unidad = NULL")
@@ -629,7 +884,6 @@ cargar_comparables_df <- function(con, cmp) {
         VALUES (?, ?, ?, ?, ?, ?)", params = unname(as.list(prod[i, ])))
   }
 
-  # Cada fila se enlaza por SKU (si se indica) o, si no, por EAN
   for (i in seq_len(nrow(cmp))) {
     por_sku <- !is.na(cmp$sku[i]) && nzchar(cmp$sku[i])
     campo   <- if (por_sku) "sku" else "ean"
@@ -653,14 +907,6 @@ cargar_comparables_df <- function(con, cmp) {
   invisible(cobertura)
 }
 
-
-# CORRESPONDENCIA POR REGLAS 
-# Cada producto comparable se define así:
-#  - La Rebaja y Locatel: por EAN (código de barras). Mismo EAN = mismo producto.
-#  - Farmatodo (no publica EAN en el listado): por una expresión regular sobre
-#    el nombre original, que debe identificar UN solo anuncio (marca, producto
-#    y medida). Si no identifica exactamente uno, el proceso se detiene.
-
 especificacion_comparables <- tibble::tribble(
   ~id_comparable, ~nombre_comun,                                                  ~marca_comun, ~contenido_valor, ~contenido_unidad, ~ean,            ~patron_farmatodo,
   1, "Alcohol antiséptico MK botella 700 mL",                                     "MK",         700,              "mL",              "7702057075101", "alcohol mk.*700 ?ml",
@@ -673,7 +919,6 @@ especificacion_comparables <- tibble::tribble(
   8, "Cinta Transpore Nexcare (3M) transparente 24 mm x 5 m",                     "Nexcare",    5,                "m",               "7702098400153", "nexcare transpore.*24"
 )
 
-# Aplica las reglas sobre los anuncios de la base y carga la correspondencia.
 resolver_comparables <- function(con, especificacion = especificacion_comparables, ruta_csv = NULL) {
   anuncios <- DBI::dbGetQuery(con, "
     SELECT c.nombre AS comercio, a.sku, a.ean, a.nombre_original
@@ -716,21 +961,21 @@ resolver_comparables <- function(con, especificacion = especificacion_comparable
 }
 
 
+# ======================================================================
 # ESTANDARIZACIÓN: campos propios; el texto original NO se modifica
+# (sin cambios respecto al Taller 1)
+# ======================================================================
 
 normalizar_texto <- function(x) {
   x |> stringi::stri_trans_general("Latin-ASCII") |> str_to_lower() |>
     str_replace_all("[^a-z0-9%.,/+ ]", " ") |> str_squish()
 }
 
-# "Alfa Safe" y "ALFASAFE" -> "ALFASAFE"; "Cure Band" y "CUREBAND" -> "CUREBAND"
 estandarizar_marca <- function(x) {
   m <- x |> stringi::stri_trans_general("Latin-ASCII") |> str_to_upper() |> str_remove_all("[^A-Z0-9]")
   ifelse(is.na(m) | m == "", NA_character_, m)
 }
 
-# Subcategoría común a los tres comercios, por reglas sobre el nombre normalizado
-# (cada sitio organiza sus secciones de forma distinta). Gana la primera regla.
 reglas_subcategoria <- tibble::tribble(
   ~subcategoria,                         ~patron,
   "Gasas y compresas",                   "\\bgasas?\\b|compresas?",
@@ -744,7 +989,6 @@ reglas_subcategoria <- tibble::tribble(
 )
 subcategoria_por_defecto <- "Otros productos de curación"
 
-# Llena anuncios.nombre_estandar, anuncios.marca y anuncios.subcategoria
 estandarizar_anuncios <- function(con) {
   a <- DBI::dbGetQuery(con, "SELECT id_anuncio, nombre_original, marca_original FROM anuncios")
   if (nrow(a) == 0) return(invisible(0L))
