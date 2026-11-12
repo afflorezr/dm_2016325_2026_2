@@ -1,0 +1,74 @@
+{
+  "id_ejecucion": "EJEC_20261112_000010",
+  "id_comercio": "jumbo",
+  "comercio": "Jumbo",
+  "rama": "Confitería",
+  "ruta": "Supermercado/Dulces Y Postres/Confitería",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-12T00:01:29-05:00",
+  "fecha_fin": "2026-11-12T00:01:35-05:00",
+  "n_reportado": 239,
+  "n_paginas": 5,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Confiter%C3%ADa?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-12T00:01:30-05:00",
+      "n_reportado": 239,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "42025ed84d478e6437170f819fc0f5feefdf582d4ed5ce102ece5485ba31dab9"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Confiter%C3%ADa?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-12T00:01:31-05:00",
+      "n_reportado": 239,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "41a08f3609f1d5c3c6d4645a6bf0a6997a7796b0b24fb71d4fdfef18ad080a3d"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Confiter%C3%ADa?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-12T00:01:32-05:00",
+      "n_reportado": 239,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "e1af1b5b829957a7b2c34a7726a110320191bc4e9a7003fb8d80224a3f18a108"
+    },
+    {
+      "numero": 4,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Confiter%C3%ADa?_from=150&_to=199",
+      "desde": 150,
+      "hasta": 199,
+      "fecha_consulta": "2026-11-12T00:01:34-05:00",
+      "n_reportado": 239,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_004.json.gz",
+      "sha256": "3197130e6b67d70eeab0422bba5a5e1b64e5d9c7fac197f6ffb572160c248103"
+    },
+    {
+      "numero": 5,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Confiter%C3%ADa?_from=200&_to=249",
+      "desde": 200,
+      "hasta": 249,
+      "fecha_consulta": "2026-11-12T00:01:34-05:00",
+      "n_reportado": 239,
+      "n": 39,
+      "status": 200,
+      "archivo": "pagina_005.json.gz",
+      "sha256": "d17a453f1be6dca5d8da0b6be42fe08a69cadf0d60f1daf11cd82e8b8956a440"
+    }
+  ]
+}

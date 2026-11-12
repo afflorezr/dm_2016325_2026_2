@@ -1,0 +1,62 @@
+{
+  "id_ejecucion": "EJEC_20261111_230924",
+  "id_comercio": "jumbo",
+  "comercio": "Jumbo",
+  "rama": "Chocolatería",
+  "ruta": "Supermercado/Dulces Y Postres/Chocolatería",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-11T23:10:53-05:00",
+  "fecha_fin": "2026-11-11T23:10:57-05:00",
+  "n_reportado": 183,
+  "n_paginas": 4,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Chocolater%C3%ADa?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-11T23:10:54-05:00",
+      "n_reportado": 183,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "c1f61b8718b1b52f276a893137d9756ff0f9d8914a347697077d5dc4ac3c93e0"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Chocolater%C3%ADa?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-11T23:10:55-05:00",
+      "n_reportado": 183,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "6c4d71ed451cc9778352b6874c7eb66fb1c0d96f13853529a9801e74b3ab2d0b"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Chocolater%C3%ADa?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-11T23:10:56-05:00",
+      "n_reportado": 183,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "24dce3d192fa001c7e1ce27879cb41d3409bb8ca3bbc37486792f79c6744727a"
+    },
+    {
+      "numero": 4,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Dulces%20Y%20Postres/Chocolater%C3%ADa?_from=150&_to=199",
+      "desde": 150,
+      "hasta": 199,
+      "fecha_consulta": "2026-11-11T23:10:57-05:00",
+      "n_reportado": 183,
+      "n": 33,
+      "status": 200,
+      "archivo": "pagina_004.json.gz",
+      "sha256": "42d87d9b374ea21193ca7b5e2e423cd36aa34cf6303e8a690233843b59221ea6"
+    }
+  ]
+}

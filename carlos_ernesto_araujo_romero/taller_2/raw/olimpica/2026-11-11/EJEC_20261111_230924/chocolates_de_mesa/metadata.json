@@ -1,0 +1,38 @@
+{
+  "id_ejecucion": "EJEC_20261111_230924",
+  "id_comercio": "olimpica",
+  "comercio": "Olímpica",
+  "rama": "Chocolates de mesa",
+  "ruta": "Supermercado/Desayuno/Chocolates de Mesa",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-11T23:11:10-05:00",
+  "fecha_fin": "2026-11-11T23:11:11-05:00",
+  "n_reportado": 54,
+  "n_paginas": 2,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.olimpica.com/api/catalog_system/pub/products/search/Supermercado/Desayuno/Chocolates%20de%20Mesa?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-11T23:11:11-05:00",
+      "n_reportado": 54,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "aae9a2628a5b67f31d9e1caa08e43efa84988ba6bc046d5b7d32ac06d4072836"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.olimpica.com/api/catalog_system/pub/products/search/Supermercado/Desayuno/Chocolates%20de%20Mesa?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-11T23:11:11-05:00",
+      "n_reportado": 54,
+      "n": 4,
+      "status": 200,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "4f190a930a927191f6bc040b3e1c58b89a6f7543f87ca0f493067dbe9f5fc3a0"
+    }
+  ]
+}
