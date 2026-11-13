@@ -118,4 +118,4 @@ rmarkdown::render("taller_1.Rmd")       # genera taller_1.html; no hace scraping
 - [X] Sin contraseñas ni tokens en el repositorio.
 - [X] Ningún archivo supera 100 MB (`raw/` pesa unos 45 MB; `diagnostico/*/pantallas/` pesa unos 71.6 MB).
 
-**Uso de herramientas de IA** (complete o ajuste según corresponda): se usó un asistente de IA para apoyar la depuración del scraper, la redacción de consultas SQL y la estructura del informe. El código se probó en el equipo local y los resultados se verificaron contra la base y las copias crudas.
+**Uso de herramientas de IA**: se usó un asistente de IA para apoyar la depuración del scraper, la redacción de consultas SQL y la estructura del informe. El código se probó en el equipo local y los resultados se verificaron contra la base y las copias crudas.
