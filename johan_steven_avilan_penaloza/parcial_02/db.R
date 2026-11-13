@@ -102,7 +102,7 @@ con_condicion <- function(where, extra) {
 fechas_captura <- function(con) {
   DBI::dbGetQuery(con, "
     SELECT DISTINCT SUBSTR(fecha_hora_inicio, 1, 10) AS fecha
-    FROM ejecuciones WHERE estado IN ('completa', 'parcial')
+    FROM ejecuciones WHERE estado = 'completa'
     ORDER BY 1 DESC")$fecha
 }
 
@@ -183,7 +183,11 @@ indicadores <- function(con, f = list()) {
   ult <- DBI::dbGetQuery(con, "
     SELECT MAX(SUBSTR(fecha_hora_inicio, 1, 10)) AS fecha,
            MIN(estado = 'completa')              AS completas
-    FROM v_ejecuciones_orden WHERE orden = 1")
+    FROM (SELECT estado, fecha_hora_inicio,
+                 ROW_NUMBER() OVER (PARTITION BY id_comercio
+                                    ORDER BY fecha_hora_inicio DESC) AS r
+          FROM ejecuciones WHERE estado <> 'fallida')
+    WHERE r = 1")
   cam <- DBI::dbGetQuery(con, "
     SELECT COUNT(*) AS n FROM v_cambios_precio WHERE tipo IN ('subió', 'bajó')")
   aho <- DBI::dbGetQuery(con, "
@@ -260,6 +264,7 @@ cambios_entre <- function(con, fecha_ant, fecha_act, comercios = NULL) {
   sql <- paste0("
     WITH ult AS (
       SELECT MAX(id_observacion) AS id_obs FROM observaciones
+      WHERE id_ejecucion IN (SELECT id_ejecucion FROM ejecuciones WHERE estado = 'completa')
       GROUP BY id_anuncio, SUBSTR(fecha_hora_consulta, 1, 10)),
     act AS (
       SELECT o.id_anuncio, o.precio FROM observaciones o
@@ -368,4 +373,16 @@ calcular_canasta <- function(precios, cantidades, nombres = NULL,
        minimo = minimo, mejor_unico = mejor_unico, mas_caro = mas_caro,
        ahorro = ahorro,
        ahorro_pct = if (!is.na(ahorro) && mejor_unico > 0) round(100 * ahorro / mejor_unico, 1) else NA_real_)
+}
+
+# ---- Historial de ejecuciones -----------------------------------------------
+
+historial_ejecuciones <- function(con) {
+  DBI::dbGetQuery(con, "
+    SELECT e.id_ejecucion, c.nombre AS comercio, e.fecha_hora_inicio, e.estado,
+           e.registros, e.productos, e.total_sitio, e.rechazadas, e.modo,
+           e.mensaje, e.ruta_raw
+    FROM   ejecuciones e
+    JOIN   comercios c ON c.id_comercio = e.id_comercio
+    ORDER  BY e.fecha_hora_inicio DESC")
 }

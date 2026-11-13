@@ -56,6 +56,15 @@ ahora_iso <- function() {
   sub("(\\d{2})$", ":\\1", x)
 }
 
+# Convierte un precio en texto a número: "$ 12.900" -> 12900.
+# El punto es separador de miles; la coma, si aparece, es decimal.
+# Texto vacío o sin dígitos -> NA (un dato ausente queda ausente).
+limpiar_precio <- function(x) {
+  x <- gsub("[^0-9,]", "", as.character(x))
+  x <- sub(",", ".", x, fixed = TRUE)
+  suppressWarnings(as.numeric(x))
+}
+
 # Identificador de una actualización (se comparte entre los comercios):
 # también es el nombre de la carpeta en raw/<comercio>/
 sello_captura <- function() format(Sys.time(), "%Y-%m-%d_%H%M%S", tz = "America/Bogota")
@@ -75,8 +84,7 @@ parsear_farmatodo <- function(pagina, subcategoria, id_ejecucion, ts) {
     sku      <- dplyr::coalesce(str_match(href, "/producto/(\\d+)")[, 2], sku_card)
 
     bloque <- trimws(html_text2(html_element(t, "app-product-all-price")))
-    montos <- as.numeric(gsub("[^0-9]", "",
-                              str_extract_all(bloque, "\\$\\s*[0-9.]+")[[1]]))
+    montos <- limpiar_precio(str_extract_all(bloque, "\\$\\s*[0-9.]+")[[1]])
 
     tibble(
       comercio               = "Farmatodo",

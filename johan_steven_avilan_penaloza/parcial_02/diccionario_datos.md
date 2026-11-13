@@ -113,7 +113,7 @@ Cambios sobre datos ya guardados. No se borran observaciones.
 
 | Vista | Qué devuelve |
 |---|---|
-| `v_ejecuciones_orden` | Ejecuciones `completa` o `parcial` numeradas por comercio (`orden` 1 = la más reciente). |
+| `v_ejecuciones_orden` | Ejecuciones `completa` numeradas por comercio (`orden` 1 = la más reciente). Las ejecuciones `parcial` o `fallida` quedan registradas en `ejecuciones`, pero no se usan para el estado actual ni para comparar precios: todas las vistas consideran solo observaciones de ejecuciones completas. |
 | `v_ultimo_precio` | Estado actual: cada anuncio incluido con su observación de la última ejecución de su comercio. Columnas: `comercio`, `nombre`, `marca`, `subcategoria`, `url`, `precio` (COP), `precio_antes`, `es_promocion`, `disponibilidad` (`disponible`/`agotado`), `precio_unitario` (COP por `unidad_normalizada`, solo comparables) y `fecha`. |
 | `v_precios` | Histórico: todas las observaciones de anuncios incluidos, con las mismas columnas que `v_ultimo_precio`. Permite consultar una captura anterior. |
 | `v_disponibilidad` | Disponibilidad de cada anuncio incluido en la última ejecución: `disponible`, `agotado` o `no observado`. |

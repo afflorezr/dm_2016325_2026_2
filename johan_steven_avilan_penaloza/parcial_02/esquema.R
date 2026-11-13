@@ -18,7 +18,7 @@ VISTAS_SQL <- c(
            ROW_NUMBER() OVER (PARTITION BY id_comercio
                               ORDER BY fecha_hora_inicio DESC) AS orden
     FROM   ejecuciones
-    WHERE  estado IN ('completa', 'parcial')",
+    WHERE  estado = 'completa'",
 
   # Estado actual: cada anuncio incluido, con su observación de la ejecución
   # más reciente de su comercio.
@@ -107,6 +107,7 @@ VISTAS_SQL <- c(
     JOIN   comercios             c ON c.id_comercio   = a.id_comercio
     JOIN   productos_comparables p ON p.id_comparable = a.id_comparable
     WHERE  o.precio IS NOT NULL AND a.contenido_total > 0
+      AND  o.id_ejecucion IN (SELECT id_ejecucion FROM ejecuciones WHERE estado = 'completa')
       AND  o.id_observacion IN (
              SELECT MAX(id_observacion) FROM observaciones
              GROUP BY id_anuncio, SUBSTR(fecha_hora_consulta, 1, 10))",
@@ -129,7 +130,8 @@ VISTAS_SQL <- c(
     FROM   observaciones o
     JOIN   anuncios  a ON a.id_anuncio  = o.id_anuncio
     JOIN   comercios c ON c.id_comercio = a.id_comercio
-    WHERE  a.incluido = 1",
+    WHERE  a.incluido = 1
+      AND  o.id_ejecucion IN (SELECT id_ejecucion FROM ejecuciones WHERE estado = 'completa')",
 
   # Fecha de referencia: la más reciente con los 8 productos en los 3 comercios.
   v_referencia = "
