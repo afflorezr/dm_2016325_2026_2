@@ -1,20 +1,17 @@
 ---
 title: "Taller 1"
-subtitle: "Comparación de precios de bebidas"
+subtitle: "Comparador de precios de bebidas no alcohólicas en comercios en línea de Colombia"
 author: "Laura Katherine Martínez Castiblanco"
 date: "`r format(Sys.Date(), '%d/%m/%Y')`"
 lang: es
-# ---------------------------------------------------------------------------
-# PARÁMETROS: lo que aparece en el panel lateral y en el visor de código.
-# Edite aquí; no hace falta tocar el CSS ni el JavaScript.
-# ---------------------------------------------------------------------------
 params:
   universidad: "Universidad Nacional de Colombia"
   dependencia: "Facultad de Ciencias, Departamento de Estadística"
   materia: "Minería de Datos (2016325)"
-  db_path: "comparador_precios.sqlite"                  # base que se ofrece para descargar
-  archivos_codigo: !r c("scraper.R", "consultas.sql")   # archivos del visor de código
-  incrustar_db_hasta_mb: 25                             # si la base pesa más, se enlaza en vez de incrustarse
+  taller: "Taller 1 · Comparador de precios"
+  db_path: "comparador_precios.sqlite"
+  archivos_codigo: !r c("scraper.R", "config.R", "comparables.R", "consultas.sql")
+  incrustar_db_hasta_mb: 25
 output:
   html_document:
     theme: null
@@ -28,19 +25,6 @@ output:
     df_print: default
 ---
 
-<!--
-  GUÍA RÁPIDA PARA EDITAR
-  1. Cada sección del informe es un bloque  ::::: {#id .kdd-tab data-title="..." data-icon="..." data-status="..."}  ...  :::::
-     - data-title : texto de la pestaña y del índice lateral
-     - data-icon  : home | globe | filter | database | code | chart | flag | check | info | file | layers | list
-     - data-status: pendiente | progreso | listo   (punto de color y barra de avance)
-  2. Para AGREGAR una sección: copie un bloque completo y cambie id, title e icon.
-     Para QUITARLA: borre el bloque (la guía del entorno, al final, es opcional).
-  3. Dentro de una sección:  ::: {.callout .insight}  (tipos: insight, success, tie, warning, method)
-     ::: {#idq .acc}  = acordeón (el primer encabezado es el título)    ::: {.kdd-subtabs} = sub-pestañas
-  4. Tablas: tabla_interactiva(df)   Gráficos: grafico_interactivo(ggplot)   (ver la última sección)
--->
-
 <img id="unal-logo-src" src="UNAL_logo.png" alt="" hidden>
 
 ```{r setup, include=FALSE}
@@ -50,16 +34,32 @@ knitr::opts_chunk$set(
   dev.args = list(bg = "transparent")
 )
 suppressPackageStartupMessages({ library(dplyr); library(tidyr); library(ggplot2); library(scales); library(stringr) })
-source("helpers.R", encoding = "UTF-8")      # funciones del entorno (tablas, gráficos, tarjetas...)
-TZ_CO <- "America/Bogota"
+source("helpers.R", encoding = "UTF-8")
 
-con <- abrir_db(params$db_path)              # base real si existe; si no, una base vacía en memoria
+con <- abrir_db(params$db_path)
 db_existe <- file.exists(ruta(params$db_path))
-vistas <- crear_vistas(con)                  # v_categoria y v_comparables (ejecución más reciente)
+vistas <- crear_vistas(con)                       # v_categoria y v_comparables (corrida más reciente)
+
+rds <- readRDS(ruta("df_resultado_final.rds"))
+cifras <- rds$cifras
+df_resultado_final <- rds$df_resultado_final
+productos_comparables_info <- rds$productos_comparables_info
+matriz_comparables <- rds$matriz_comparables
+resumen_na <- rds$resumen_na
+
+fm <- function(x, d = 0) formatC(x, format = "f", digits = d, big.mark = ".", decimal.mark = ",")
+# Un color fijo por comercio en todos los gráficos (paleta apta para daltonismo)
+COL_COMERCIO <- c("Éxito" = "#E69F00", "Carulla" = "#009E73",
+                  "Supermercado Comunal" = "#0072B2", "PriceSmart" = "#CC79A7")
+
+ej <- dbGetQuery(con, "SELECT comercio, estado, fecha_inicio, fecha_fin, n_registros, n_descartados
+                       FROM ejecuciones ORDER BY fecha_inicio")
+iso <- function(x) as.POSIXct(sub("(\\d{2}):(\\d{2})$", "\\1\\2", x), format = "%Y-%m-%dT%H:%M:%S%z", tz = "America/Bogota")
+dur_h <- as.numeric(difftime(max(iso(ej$fecha_fin), na.rm = TRUE), min(iso(ej$fecha_inicio)), units = "hours"))
+n_desc_total <- sum(ej$n_descartados)
 ```
 
 ```{r entorno, echo=FALSE, results='asis'}
-# Envía al navegador los datos del panel lateral, el código de los archivos y la base descargable
 embed_entorno(
   meta = list(universidad = params$universidad, dependencia = params$dependencia, materia = params$materia,
               taller = params$taller, titulo = rmarkdown::metadata$title, subtitulo = rmarkdown::metadata$subtitle,
@@ -71,31 +71,17 @@ embed_entorno(
 
 ## Introducción
 
-En el sector de venta al por menor de bebidas en Colombia, la transparencia y variabilidad de precios a través de canales digitales de comercio electrónico constituye un área prioritaria para el análisis cuantitativo de mercado y la minería de datos. Las principales cadenas de supermercados y tiendas de conveniencia implementan estrategias dinámicas de fijación de precios, ofertas promocionales cambiantes y diferenciación por formato de volumen y tipo de empaque.
+Quien compra bebidas en línea en Colombia se enfrenta a precios que cambian entre comercios, a presentaciones de distinto tamaño y a promociones. Este taller sigue el flujo KDD (selección, preprocesamiento, transformación, minería y evaluación) para responder una pregunta práctica: **¿dónde conviene comprar cada bebida y cuándo una presentación más grande sale más barata por litro?**
 
-Siguiendo el flujo metodológico KDD (*Knowledge Discovery in Databases*), este proyecto automatiza la extracción, estandarización, almacenamiento relacional en SQLite y evaluación comparativa de precios para el catálogo de Bebidas Líquidas disponible en cuatro comercios representativos de Colombia: Éxito, Carulla, PriceSmart y Supermercado Comunal.
+La categoría es **bebidas no alcohólicas** (gaseosas, jugos, agua, té y café listos para beber, energizantes). Se recolectaron con código propio cuatro comercios: **Éxito, Carulla, PriceSmart y Supermercado Comunal**. Los datos quedaron en SQLite y se compararon con consultas SQL.
 
-* **Objetivo General:** Construir un comparador de precios reproducible, modular y auditable que permita determinar, para ofertas homogéneas y estandarizadas, el comercio que ofrece el menor precio unitario por contenido (\(\text{COP}/mL\) y \(\text{COP}/L\)).
-* **Objetivos Específicos:**
-  1. Recolectar mediante *web scraping* automatizado la oferta completa de bebidas en las cuatro plataformas objetivo, registrando texto crudo, precios e identificadores nativos.
-  2. Implementar un *pipeline* estricto de limpieza de datos para descartar productos ajenos (ruido/no-bebidas) y normalizar las presentaciones volumétricas a mililitros (\(mL\)).
-  3. Aplicar reglas de coincidencia exacta por marca, subcategoría, variante y volumen para identificar al menos 8 productos comparables presentes en un mínimo de 3 comercios simultáneamente.
-  4. Diseñar e interpretar 8 consultas en SQL (dialecto SQLite) sobre el modelo relacional para analizar dispersión de precios, promociones e índices de costo.
+* **Pregunta central:** identificar el comercio de menor precio para presentaciones idénticas y el menor precio por litro cuando cambia el tamaño.
+* **Alcance:** una corrida de scraping (`r cifras$id_corrida`), con `r fm(cifras$n_obs)` observaciones válidas, y `r cifras$n_comp_prod` presentaciones comparables presentes en tres comercios.
+* **Qué incluye la categoría:** agua, jugos, gaseosas, té y café preparados, y energizantes. Se excluyen bebidas deportivas o de rehidratación, café o té en polvo o grano, lácteos y bebidas alcohólicas.
 
-
-::: {.placeholder}
-**Elementos Validos de Bebidas**:	
-Agua, jugos, gaseosas, café, té y bebidas energizantes convencionales. 
-Excluye bebidas deportivas y soluciones medicinales de rehidratación.
-:::
-
-### Resumen 
+### Resumen
 
 ```{r tarjetas-resumen, echo=FALSE, results='asis'}
-# Se calculan solas desde la base (observaciones.comparable e id_producto_comun) cuando hay datos
-if (!exists("con") || !dbIsValid(con)) {
-  con <- dbConnect(SQLite(), "comparador_precios.sqlite")
-}
 tarjetas_resumen(con)
 ```
 
@@ -105,87 +91,111 @@ tarjetas_resumen(con)
 
 ## Fuentes y scraping
 
-Acorde a los principios de modularidad del proceso KDD y a las especificaciones técnicas del taller, el código de extracción no se ejecuta dentro del informe RMarkdown. En su lugar, reside en el módulo independiente `scraper.R`, el cual articula la recolección combinando peticiones HTTP directas con navegación headless automatizada mediante `chromote` (control de Google Chrome desde R).
+El código de extracción vive en `scraper.R` (solo funciones) y `config.R` (parámetros y selectores). Se ejecuta desde `run_scraper.R`; el informe no hace scraping, solo lee la base. La estrategia es la misma para los cuatro comercios: **fase 1** recorre buscadores y recoge enlaces de producto; **fase 2** abre cada ficha y extrae los datos. En las fichas se prefiere el JSON-LD embebido, luego `__NEXT_DATA__`, luego Open Graph y, al final, el DOM.
 
-```{r}
-# Carga instantánea de los objetos auditados previamente guardados en RDS
-# (Evita re-ejecutar el scraping en vivo de ~30 minutos durante el tejido del HTML)
-datos_auditados <- readRDS("df_resultado_final.rds")
+| Comercio | Plataforma | Fase 1 (listado) | Fase 2 (ficha) |
+|:--|:--|:--|:--|
+| Éxito | FastStore / VTEX | `/s?q=<término>&page=<n>` con Chrome (`chromote`) y scroll | JSON-LD; precio general mostrado ("Otros", no el de tarjeta) |
+| Carulla | FastStore / VTEX | `/s?q=<término>&page=<n>` con Chrome y scroll | Igual que Éxito |
+| PriceSmart | Propia (Storefront) | `/es-co/busqueda?q=<término>&page=<n>`; el listado indica Disponible/Agotado | JSON-LD y DOM; en "12 Unidades / 400 mL" el volumen es **por unidad** |
+| Supermercado Comunal | PrestaShop | Sección `13-bebidas?page=<n>` y `jolisearch?s=<término>` | `itemprop='price'`, referencia (SKU) y descripción |
 
-df_resultado_final         <- datos_auditados$df_resultado_final
-productos_comparables_info <- datos_auditados$productos_comparables_info
-matriz_comparables         <- datos_auditados$matriz_comparables
-resumen_na                 <- datos_auditados$resumen_na
+**Términos de búsqueda (Éxito, Carulla, PriceSmart):** siete de categoría (`gaseosa`, `jugo`, `agua`, `agua con gas`, `te frio`, `cafe frio`, `energizante`) con hasta 12 páginas, y diecisiete de marca (Coca-Cola, Pepsi, Postobón, Hit, Del Valle, Hatsu, Red Bull, Monster, Speed Max, Colombiana, Quatro, Sprite, Fanta, Brisa, Cristal, Manantial, entre otras) solo con la primera página. En los resultados de marca, después de los primeros productos aparecen artículos ajenos (muñecas, vajillas, cosméticos), por eso no se recorren más páginas.
+
+**Buenas prácticas:** pausa aleatoria de 1,5 a 3,5 s entre peticiones, agente de usuario que identifica el proyecto académico, número máximo de scrolls y de fichas por comercio, y copia de `robots.txt` de cada sitio en `diagnostico/`.
+
+**Copias crudas y modo sin conexión.** Cada página consultada se guarda comprimida (`.html.gz`) en `raw/<comercio>/<corrida>/`, y `raw/manifest.csv` registra URL, fecha y hora, archivo y conteos. `ejecutar_corrida(modo = "offline", id_corrida = ...)` reprocesa esas copias con el mismo parser, sin tocar la red, y escribe en `comparador_precios_reproc.sqlite`.
+
+La corrida completa tardó **`r fm(dur_h, 1)` horas** (hora de Colombia). Todos los comercios terminaron en estado `completa`:
+
+```{r tabla-ejecuciones, echo=FALSE}
+tabla_interactiva(ej |> rename(Comercio = comercio, Estado = estado, Inicio = fecha_inicio, Fin = fecha_fin,
+                               Validos = n_registros, Descartados = n_descartados), filtros = "none", page = 10)
 ```
 
-1. **Éxito:**
-   * URL Base de Búsqueda: [`https://www.exito.com/s?q=`](https://www.exito.com/s?q=)
-   * Mecanismo: Consultas orientadas por palabras clave sobre plataforma VTEX. Se inyectan scripts de desplazamiento vertical (*auto-scroll*) mediante JavaScript en la sesión de `chromote` para forzar el *lazy-loading* de imágenes y precios en contenedores `productCard_contentInfo`.
-2. **Carulla:**
-   * URL Base de Búsqueda: [`https://www.carulla.com/s?q=`](https://www.carulla.com/s?q=)
-   * Mecanismo: Peticiones asíncronas sobre motor VTEX. Extracción estructurada de nombres, precios de lista y precios de oferta mediante selectores CSS sobre la rejilla de catálogo.
-3. **PriceSmart:**
-   * URL Base de Búsqueda: [`https://www.pricesmart.com/es-co/busqueda?q=`](https://www.pricesmart.com/es-co/busqueda?q=)
-   * Mecanismo: Extracción dinámicamente controlada sobre `.product-card`. Requiere la supresión automatizada de modales interactivos de selección de club/ubicación mediante inyección JS en el DOM antes del *parsing* del HTML.
-4. **Supermercado Comunal:**
-   * Sección de Bebidas Directa: [`https://supermercadocomunal.com/13-bebidas`](https://supermercadocomunal.com/13-bebidas)
-   * Búsqueda General: [`https://supermercadocomunal.com/jolisearch?s=`](https://supermercadocomunal.com/jolisearch?s=)
-   * Mecanismo: Arquitectura en dos fases para la plataforma PrestaShop. *Fase 1:* Recolección masiva de URLs canónicas de producto (`/13-bebidas?page=N` y `jolisearch`). *Fase 2:* Inspección profunda de cada ficha individual (`/[id]-[producto].html`) para extraer el atributo exacto `itemprop='price'`, la referencia SKU nativa y la descripción extendida.
+### Cobertura de la recolección
 
-El script `scraper.R` integra la función orquestadora `ejecutar_scraper_maestro(modo_offline = TRUE)`. 
-* Modo Online (`modo_offline = FALSE`): Abre la sesión de Google Chrome, ejecuta las peticiones web en vivo, almacena los HTMLs crudos en `raw/<comercio>/` y procesa los datos (duración aproximada: 30 minutos).
-* Modo Offline (`modo_offline = TRUE`): No realiza peticiones web ni abre navegadores. Lee directamente las copias HTML inmutables respaldadas en la carpeta `raw/`, ejecuta el *parser* con `rvest` y reconstruye la base de datos en 15 minutos.
+```{r cobertura, echo=TRUE}
+cob <- dbGetQuery(con, "
+  SELECT e.comercio AS comercio,
+    (SELECT COUNT(*) FROM cobertura_sitio c WHERE c.id_ejecucion = e.id_ejecucion AND c.tipo = 'listado') AS paginas_de_listado,
+    (SELECT MAX(c.total_sitio) FROM cobertura_sitio c WHERE c.id_ejecucion = e.id_ejecucion AND c.tipo = 'listado') AS total_que_muestra_el_sitio,
+    (SELECT COUNT(*) FROM cobertura_sitio c WHERE c.id_ejecucion = e.id_ejecucion AND c.tipo = 'producto') AS fichas_visitadas,
+    e.n_registros AS observaciones_validas,
+    e.n_descartados AS descartados
+  FROM ejecuciones e ORDER BY e.n_registros DESC")
+tabla_interactiva(cob, filtros = "none", page = 10)
+```
 
-::: {.callout .method}
-**Eficiencia en el Tejido del Documento (`taller_1.Rmd`):**
-Dado que tanto el scraping en vivo como el parseo masivo de cientos de archivos HTML crudos son procesos que consumen recursos de cómputo y tiempo significativos, el informe RMarkdown no re-ejecuta la extracción durante el tejido (*knit*). En su lugar, lee directamente el objeto respaldado `df_resultado_final.rds` garantizando una compilación reproducible e instantánea.
+::: {.callout .warning}
+**La recolección no es exhaustiva y hay que decirlo.** El "total que muestra el sitio" es el mayor conteo que devuelve un buscador (p. ej. `jugo` en Éxito), e incluye productos que no son bebidas, así que **no es comparable** con las observaciones válidas. PriceSmart no muestra conteo (`NA`). El alcance real está limitado por los términos de búsqueda, el máximo de páginas por término y el tope de fichas por comercio. En Supermercado Comunal sí se visitó todo lo que devolvieron la sección de bebidas y las búsquedas.
 :::
 
-Tras ejecutar el módulo de extracción y el proceso de auditoría, se consolidaron las siguientes métricas de recolección:
+### Qué se descartó y por qué
 
-```{r}
-# Trazabilidad de resultados de la corrida auditada
-tibble(
-  Métrica = c(
-    "Total de Observaciones Recolectadas",
-    "Productos Comparables Únicos (≥ 3 Comercios)",
-    "Observaciones Marcadas como Comparables (comparable = 1)"
-  ),
-  Valor = c(
-    nrow(df_resultado_final),
-    nrow(productos_comparables_info),
-    sum(df_resultado_final$comparable)
-  )
-) %>%
-knitr::kable(caption = "Tabla 2.1: Resumen General de la Captura Auditada")
+Antes de insertar, cada ficha pasa por filtros. Los rechazados no se pierden: quedan en la tabla `descartes` con su motivo y archivo crudo.
+
+```{r descartes-motivo, echo=TRUE}
+desc_tab <- dbGetQuery(con, "SELECT motivo, comercio, COUNT(*) AS n FROM descartes GROUP BY motivo, comercio") |>
+  pivot_wider(names_from = comercio, values_from = n, values_fill = 0) |>
+  mutate(Total = rowSums(across(where(is.numeric)))) |> arrange(desc(Total))
+tabla_interactiva(desc_tab, filtros = "none", page = 10)
 ```
 
+| Motivo | Significado |
+|:--|:--|
+| `fuera_de_categoria_url` | La URL ya delata que no es una bebida (se descarta sin abrir la ficha) |
+| `fuera_de_categoria` | El nombre coincide con las exclusiones (cosméticos, vajilla, café en polvo, lácteos, alcohol…) |
+| `fuera_de_seccion_bebida` | El *breadcrumb* de la ficha no pertenece a la sección de bebidas |
+| `sin_volumen_liquido` | No hay contenido en mL o L (excluye café o té en polvo vendidos en gramos) |
+| `precio_por_litro_implausible` / `precio_fuera_de_rango` | Reglas de sanidad (COP/L entre 300 y 80.000; precio entre 100 y 3.000.000) |
+| `sin_precio` / `sin_nombre` | Ficha sin dato esencial; nunca se rellena con ceros |
+
+Se descartaron **`r fm(n_desc_total)`** registros frente a **`r fm(cifras$n_obs)`** válidos. La capa más fuerte fue la de la URL y el breadcrumb, que evitó abrir fichas de muñecas, vajillas y cosméticos que los buscadores de marca devuelven como ruido.
+
+### Reproducibilidad: modo en línea frente a sin conexión
+
+```{r repro-offline, echo=TRUE}
+f_rep <- ruta("comparador_precios_reproc.sqlite")
+repro_ok <- NA
+if (file.exists(f_rep)) {
+  con2 <- dbConnect(SQLite(), f_rep)
+  a <- dbGetQuery(con,  "SELECT comercio, sku_comercio, precio_cop FROM observaciones")
+  b <- dbGetQuery(con2, "SELECT comercio, sku_comercio, precio_cop FROM observaciones")
+  dbDisconnect(con2)
+  ab <- full_join(a, b, by = c("comercio", "sku_comercio"), suffix = c("_online", "_offline"))
+  repro <- ab |> group_by(comercio) |>
+    summarise(en_linea = sum(!is.na(precio_cop_online)), sin_conexion = sum(!is.na(precio_cop_offline)),
+              en_ambas = sum(!is.na(precio_cop_online) & !is.na(precio_cop_offline)),
+              precio_igual = sum(precio_cop_online == precio_cop_offline, na.rm = TRUE), .groups = "drop")
+  repro_ok <- all(repro$en_linea == repro$sin_conexion & repro$en_linea == repro$precio_igual)
+  tabla_interactiva(repro, filtros = "none", page = 10)
+}
+```
+
+::: {.callout.success}
+`r if (isTRUE(repro_ok)) "El reprocesamiento sin conexión de 'raw/' reproduce **exactamente** las mismas observaciones y precios que la corrida en línea." else "Revise la tabla: el reprocesamiento sin conexión no coincide por completo con la corrida en línea."` Los descartados difieren a propósito: el modo sin conexión no repite el descarte por URL, que ocurre en el listado antes de abrir la ficha y por lo tanto no deja copia cruda.
+:::
 
 ### Galería de evidencias
 
 ```{r galeria, echo=FALSE, results='asis'}
-# Guarde capturas en la carpeta evidencias/ (png, jpg, webp). El nombre del archivo es el pie de foto.
 dir_ev <- ruta("evidencias")
 imgs <- if (dir.exists(dir_ev)) list.files(dir_ev, pattern = "\\.(png|jpe?g|webp)$", ignore.case = TRUE, full.names = TRUE) else character()
-
 fig <- if (length(imgs) > 0) {
-  sprintf('<figure><img src="%s" alt="%s"><figcaption>%s</figcaption></figure>', 
-          imgs,
-          htmlEscape(tools::file_path_sans_ext(basename(imgs))), 
+  sprintf('<figure><img src="%s" alt="%s"><figcaption>%s</figcaption></figure>', imgs,
+          htmlEscape(tools::file_path_sans_ext(basename(imgs))),
           htmlEscape(gsub("[_-]+", " ", tools::file_path_sans_ext(basename(imgs)))))
-} else {
-  '<div class="evidence-empty">Aún no hay capturas. Guárdelas en <code>evidencias/</code>.</div>'
-}
-
+} else '<div class="evidence-empty">Aún no hay capturas. Guárdelas en <code>evidencias/</code>.</div>'
 raw_html(c('<div class="evidence-grid">', fig, "</div>"))
 ```
 
+::: {#codigo-scraper .acc .closed}
 ### Código del scraper
 
-::: {.callout .method}
-El código completo se abre desde el panel lateral (**Ver código**), o a continuación se presenta el código completo:
-```{r code = readLines("scraper.R"), eval=FALSE}
+El visor del panel lateral (**Ver scraper.R**) muestra el archivo con numeración de líneas; abajo está el código completo.
 
+```{r code = readLines("scraper.R", encoding = "UTF-8"), eval=FALSE}
 ```
 :::
 
@@ -195,128 +205,77 @@ El código completo se abre desde el panel lateral (**Ver código**), o a contin
 
 ## Preparación, limpieza y normalización
 
-::: {.placeholder}
-**Escriba aquí:** limpieza de precios y textos, correspondencia entre productos de distintos comercios y normalización de contenido y precio por unidad.
+Las versiones estandarizadas viven en columnas propias; el texto original (`producto_raw`, `texto_original_anuncio`) se conserva intacto.
+
+1. **Precio a número (COP).** `extraer_montos_cop()` toma montos con `$`, descarta precios por unidad como "($ 6/Mililitro)" y quita separadores de miles. Un precio de lista (tachado) solo se guarda si es mayor que el actual; si no, queda `NULL`. Nunca se imputan valores.
+2. **Contenido en mL.** `extraer_volumen()` convierte L y cc a mL y calcula unidades y contenido total. En Éxito y Carulla el "(3000 ml)" final del nombre es el **contenido total** del paquete; en PriceSmart, "12 Unidades / 400 mL" indica 400 mL **por unidad**.
+3. **Precio por litro** = `precio_cop / (contenido_total_ml / 1000)`.
+4. **Marca y subcategoría.** Un diccionario de marcas normaliza `coca cola`, `coca-cola`, etc.; la subcategoría (Gaseosas, Jugos, Agua, Té preparado, Café preparado, Energizantes) sale de reglas sobre el nombre.
+5. **Exclusión de ruido** en tres capas: patrón de palabras excluidas, URL y breadcrumb de sección, y la exigencia de volumen líquido.
+6. **Disponibilidad con evidencia:** `disponible`, `agotado` o `no_observado`. Un producto que no se observó no se interpreta como agotado.
+
+### Correspondencia de productos entre comercios
+
+Dos observaciones son "la misma presentación" si coinciden en **marca + subcategoría + variante + contenido total (mL) + número de unidades**. La *variante* resume sabor y atributos (sin azúcar, con o sin gas, mixto). `asignar_comparables()` evalúa los cuatro tríos posibles de comercios, elige el de **más productos en común** y deja un único representante por comercio y producto. La correspondencia se guarda en `productos_comunes`.
+
+```{r trios, echo=FALSE}
+trios_tab <- dbGetQuery(con, "SELECT lista_comercios AS comercios_con_el_producto, COUNT(*) AS productos FROM productos_comunes GROUP BY lista_comercios")
+```
+
+El trío elegido fue **Éxito + Carulla + Supermercado Comunal**. PriceSmart no aporta comparables porque vende sobre todo multipacks y formatos mayoristas cuyas unidades no coinciden con los demás comercios; sí aporta datos a la descripción de la categoría.
+
+::: {.callout .warning}
+**Validación manual de la correspondencia.** Se revisaron los emparejamientos con diferencias de precio superiores al 25 %. En Canada Dry 1,5 L, Del Valle 2,5 L, Manantial 600 mL y Schweppes 300 mL los tres comercios tienen el mismo nombre y volumen, así que las diferencias son reales. En cambio, la Coca-Cola de "3000 ml" de Éxito y Carulla costaba cerca de $24.500, unos $8.100 por litro, frente a $9.990 en Comunal. Eso es un multipack de botellas pequeñas cuyo total aparece como 3000 mL, emparejado por error con una botella única de 3 L. Se **excluyó de los comparables** y el cambio quedó registrado en la tabla `correcciones` (no se borró ninguna observación).
 :::
 
-La recolección bruta capturó 856 observaciones. El proceso de preparación incluyó cuatro transformaciones principales en R:
-
-### A. Extracción y Limpieza Monetaria (`limpiar_precio_cop`)
-Se procesó el texto crudo del precio descartando signos de pesos (`$`), separadores de miles y caracteres de texto. Los valores vacíos o no numéricos se trataron de forma estricta como valores faltantes (`NA_real_`), evitando la imputación arbitraria con ceros.
-
-### B. Depuración de Ruido y Productos Ajenos (`PATRON_EXCLUSIONES`)
-Para garantizar que únicamente se evalúen bebidas líquidas, se aplicó un filtro de exclusión por expresiones regulares (Regex) sobre los nombres y descripciones. Se eliminaron registros correspondientes a:
-* Artículos de Hogar y Cocina: Vasos, mugs, termos, hieleras, jarras, cubiertos, aparatos electrónicos.
-* Productos Secos / En Polvo: Café en grano/molido, mezclas en polvo, yerba mate, bolsas de té seco, suplementos.
-* Cuidado Personal y Aseo: Shampoos, cremas, desinfectantes, alimento para mascotas.
-
-```{r}
-# Expresión regular de exclusión utilizada en el pipeline
-# PATRON_EXCLUSIONES <- "(?i)\b(teclado|mug|taza|dispensador|molido|liofilizado|grano|polvo|shampoo|mascotas|...)\b"
+```{r correcciones, echo=TRUE}
+corr <- dbGetQuery(con, "SELECT fecha, tabla, id_registro, campo, valor_anterior, valor_nuevo, motivo FROM correcciones")
+tabla_interactiva(corr, filtros = "none", page = 10)
 ```
 
-Para realizar comparaciones válidas entre empaques heterogéneos (ej. latas de \(330\,mL\), botellas de \(1.5\,L\), multipacks de \(6 \times 269\,mL\) u onzas), la función `extraer_volumen_avanzado` convirtió cada presentación a una unidad homogénea en mililitros (\(mL\)).
+### Diagnósticos de la preparación
 
-### Fórmulas Matemáticas de Transformación
-1. Conversión Volumétrica Normalizada (\(\text{volumen\_ml}\)):
-$$\text{Volumen (mL)} = \text{contenido\_num} \times \text{Factor\_Conversion}$$
+::: {#t31 .acc .closed}
+### Tabla 3.1 · Valores ausentes por variable
 
-Donde el $\text{Factor\_Conversion}$ se define según la unidad original:
-
-* **Litros ($\text{L, lt, litros}$):** $\text{Factor} = 1000$
-* **Mililitros ($\text{ml, cc, cm3}$):** $\text{Factor} = 1$
-* **Onzas ($\text{oz, onzas}$):** $\text{Factor} = 29.5735$
-
-
-2. Precio Unitario por Mililitro (\(\text{Precio/mL}\)):
-
-$$\text{Precio\_por\_mL} = \text{precio\_cop} / \text{Volumen\_mL}$$
-   
-3. Precio Estándar por Litro (\(\text{Precio/Litro}\)):
-
-$$\text{Precio\_por\_Litro} = \text{Precio\_por\_mL} \times 1000$$
-
-
-
-
-Para dar cumplimiento estricto al criterio de comparación cruzada, se construyó una clave unificada de agrupación basada en cuatro atributos:
-
-$$\text{Clave Producto} = \text{Marca_Estandarizada}+ \text{Subcategoría}  + \text{Variante}  + \text{Volumen_mL_Std}$$
-
-Se identificaron 36 productos comparables únicos presentes simultáneamente en 3 o más comercios (superando la meta de 8 productos exigida en las especificaciones), con un total de 295 observaciones marcadas con `comparable = 1` y asignadas a un código uniforme (`PROD_COM_01` a `PROD_COM_36`).
-
-### Diagnósticos y Tablas de la Preparación
-
-```{r tablas_preparacion, echo=FALSE, results='asis'}
-# ------------------------------------------------------------------------------
-# Tabla 3.1: Diagnóstico de Valores Ausentes (NAs)
-# ------------------------------------------------------------------------------
-df_na_clean <- resumen_na %>% 
-  select(columna, n_na, pct_na) %>%
-  rename(
-    "Variable" = columna, 
-    "Registros Faltantes (NAs)" = n_na, 
-    "Porcentaje del Total (%)" = pct_na
-  )
-
-htmltools::tagList(
-  tags$div(
-    class = "acc closed", id = "tab-na-diag",
-    tags$h3(HTML("Tabla 3.1: Diagnóstico de Valores Ausentes en el Dataset Consolidado")),
-    tabla_interactiva(df_na_clean, filtros = "none", page = 10)
-  )
-)
-
-# ------------------------------------------------------------------------------
-# Tabla 3.2: Frecuencia de Productos por Subcategoría y Comercio
-# ------------------------------------------------------------------------------
-tabla_subcat <- df_resultado_final %>%
-  count(subcategoria, comercio) %>%
-  pivot_wider(names_from = comercio, values_from = n, values_fill = 0) %>%
-  rowwise() %>%
-  mutate(Total_Subcategoria = sum(c_across(where(is.numeric)))) %>%
-  ungroup()
-
-htmltools::tagList(
-  tags$div(
-    class = "acc closed", id = "tab-subcat-freq",
-    tags$h3(HTML("Tabla 3.2: Distribución de Observaciones por Subcategoría de Bebida y Tienda")),
-    tabla_interactiva(tabla_subcat, filtros = "none", page = 10)
-  )
-)
-
-# ------------------------------------------------------------------------------
-# Tabla 3.3: Muestra del Catálogo de Productos Comparables
-# ------------------------------------------------------------------------------
-tabla_comp_sample <- productos_comparables_info %>% 
-  select(id_comun_asignado, clave_producto, n_comercios, lista_comercios) %>%
-  rename(
-    "ID Común" = id_comun_asignado,
-    "Clave Unificada (Marca_Subcat_Variante_Vol)" = clave_producto,
-    "N° Tiendas" = n_comercios,
-    "Comercios Presentes" = lista_comercios
-  )
-
-htmltools::tagList(
-  tags$div(
-    class = "acc closed", id = "tab-comp-sample",
-    tags$h3(HTML("Tabla 3.3: Muestra del Catálogo Homologado de Productos Comparables (Presencia en ≥ 3 Comercios)")),
-    tabla_interactiva(tabla_comp_sample, filtros = "top", page = 15)
-  )
-)
-
-# ------------------------------------------------------------------------------
-# Tabla 3.4: Matriz de Coincidencias por Comercio para Productos Comparables
-# ------------------------------------------------------------------------------
-htmltools::tagList(
-  tags$div(
-    class = "acc closed", id = "tab-matriz-comp",
-    tags$h3(HTML("Tabla 3.4: Matriz de Observaciones Comparables por Producto y Comercio")),
-    tabla_interactiva(matriz_comparables, filtros = "top", page = 25)
-  )
-)
+```{r tabla-na, echo=TRUE}
+resumen_na |> filter(n_na > 0) |> arrange(desc(n_na)) |>
+  rename(Variable = columna, `Registros ausentes` = n_na, `% del total` = pct_na) |>
+  tabla_interactiva(filtros = "none", page = 10)
 ```
 
+Los ausentes son opcionales por diseño: `precio_lista_cop` (sin promoción), `id_producto_comun` (productos no comparables) y marcas no reconocidas. No se rellenan con valores artificiales.
+:::
+
+::: {#t32 .acc .closed}
+### Tabla 3.2 · Observaciones por subcategoría y comercio
+
+```{r tabla-subcat, echo=TRUE}
+df_resultado_final |> count(subcategoria, comercio) |>
+  pivot_wider(names_from = comercio, values_from = n, values_fill = 0) |>
+  mutate(Total = rowSums(across(where(is.numeric)))) |> arrange(desc(Total)) |>
+  tabla_interactiva(filtros = "none", page = 10)
+```
+:::
+
+::: {#t33 .acc .closed}
+### Tabla 3.3 · Catálogo de presentaciones comparables
+
+```{r tabla-comp, echo=TRUE}
+productos_comparables_info |>
+  rename(`ID común` = id_comun_asignado, `Clave (marca|subcategoría|variante|mL|unidades)` = clave_producto,
+         `N.° comercios` = n_comercios, Comercios = lista_comercios) |>
+  tabla_interactiva(filtros = "top", page = 15)
+```
+:::
+
+::: {#t34 .acc .closed}
+### Tabla 3.4 · Observaciones comparables por producto y comercio
+
+```{r tabla-matriz, echo=TRUE}
+tabla_interactiva(matriz_comparables, filtros = "top", page = 15)
+```
+:::
 
 ::::::::::
 
@@ -324,139 +283,73 @@ htmltools::tagList(
 
 ## Base de datos SQLite
 
-::: {.callout .method}
+`comparador_precios.sqlite` almacena todo lo recolectado. Cada comercio se guarda en una **transacción** (`dbBegin`/`dbCommit`, con `dbRollback` si falla), de modo que un error no deja datos a medias; la ejecución pasa de `en_curso` a `completa`, `parcial` o `fallida`.
 
-La base de datos relacional `comparador_precios.sqlite` actúa como el repositorio persistente en disco para la fase de almacenamiento. Está diseñada con una estructura normalizada de dos tablas principales (`ejecuciones` y `observaciones`) que garantiza trazabilidad de auditoría, prevención de duplicados y aislamiento transaccional por ejecución.
-:::
+| Tabla / vista | Contenido |
+|:--|:--|
+| `ejecuciones` | Una fila por comercio y corrida: identificador, fechas ISO 8601 (-05:00), modo, conteos y estado |
+| `observaciones` | Una fila por producto observado (28 campos): precio, contenido, marca, URL, texto original, archivo crudo, `comparable`, `id_producto_comun` |
+| `descartes` | Registros rechazados con motivo y archivo crudo |
+| `cobertura_sitio` | Páginas de listado y fichas visitadas, con el total que reporta el sitio |
+| `productos_comunes` | Correspondencia entre comercios: clave, marca, variante, contenido y comercios |
+| `correcciones` | Cambios posteriores a la carga (fecha, registro, campo, valor anterior y nuevo, motivo) |
+| `v_ultimo_precio`, `v_cambios_precio`, `v_comparables` | Vistas persistentes; el informe crea además vistas temporales sobre la corrida más reciente (`v_categoria`, `v_comparables`) |
 
-###  Modelo Entidad-Relación y Esquema Relacional
+**Integridad:** `PRIMARY KEY` en `ejecuciones`; `precio_cop > 0` y dominio de `disponibilidad` por `CHECK`; `UNIQUE(comercio, sku_comercio, fecha_hora_consulta)` y `UNIQUE(id_ejecucion, sku_comercio)` para que una observación no entre dos veces; claves foráneas activadas e índices por comercio y SKU, corrida, comparables, fecha, y subcategoría y marca.
 
-El modelo de datos se compone de dos tablas vinculadas de forma lógica por el identificador único de corrida `id_ejecucion`:
-
-1. Tabla `ejecuciones` (Metadatos de Auditoría):
-   - `id_ejecucion` (`REAL PRIMARY KEY`): Timestamp numérico exacto de inicio (`Sys.time()`).
-   - `fecha_inicio` (`TEXT`), `fecha_fin` (`TEXT`): Marcas de tiempo en formato estándar ISO 8601 con zona horaria de Colombia (`-05:00`).
-   - `total_registros` (`INTEGER`): Cantidad total de observaciones capturadas en la corrida.
-   - `estado` (`TEXT`): Estado operativo (`COMPLETADA`, `PARCIAL` o `FALLIDA`).
-
-2. Tabla `observaciones` (Surtido y Precios):
-   Contiene un esquema parametrizado de 22 columnas. Se define una llave primaria compuesta sobre `(comercio, sku_codigo, fecha_hora_consulta)` para asegurar unicidad temporal por producto y tienda.
-
-| Dimensión | Campo SQL | Tipo | Descripción KDD |
-| :--- | :--- | :--- | :--- |
-| Trazabilidad | `id_ejecucion`, `comercio`, `fecha_hora_consulta`, `url_extraccion` | TEXT / REAL | Identificación unívoca del origen y momento de captura. |
-| Atributos Crudos | `producto_raw`, `texto_original_anuncio`, `marca_raw`, `presentacion_raw` | TEXT | Copia inmutable textual extraída del HTML. |
-| Precios y Ofertas | `precio_cop`, `precio_lista_cop`, `es_promocion`, `sku_codigo` | REAL / INT | Precios nominales y código hash de producto (`MD5`). |
-| Estandarización | `contenido_num`, `unidad_medida`, `marca_estandarizada`, `subcategoria` | REAL / TEXT | Cantidad normalizada (`ml`, `L`), categoría y marca. |
-| Homologación | `comparable`, `id_producto_comun` | INT / TEXT | Flag de inclusión en canasta común (`1/0`) y clave de cruce. |
-| Métricas Derivadas | `precio_por_ml`, `precio_por_litro` | REAL | Precios unitarios estandarizados para comparación justa. |
-| Atributos Adicionales | `disponibilidad`, `url_imagen` | TEXT | Estado en stock y enlace a imagen del producto. |
-
-
-
-::: {.placeholder}
-Para evitar fallos por colisión de llaves primarias (`UNIQUE constraint failed`) cuando el scraper vuelve a capturar productos ya existentes, el script `scraper.R` implementa una carga mediante tabla de paso temporal (`temp_staging`):
-
-```{r}
-# Carga idempotente en SQLite mediante tabla de paso (Staging)
-guardar_en_sqlite <- function(df, db_path = "comparador_precios.sqlite") {
-  if (is.null(df) || nrow(df) == 0) return(NULL)
-  con <- dbConnect(SQLite(), db_path)
-  on.exit(dbDisconnect(con), add = TRUE)
-  
-  df_limpio <- df %>% distinct(comercio, sku_codigo, fecha_hora_consulta, .keep_all = TRUE)
-  dbWriteTable(con, "temp_staging", df_limpio, overwrite = TRUE)
-  
-  cols_comunes <- intersect(dbListFields(con, "observaciones"), dbListFields(con, "temp_staging"))
-  cols_str <- paste(cols_comunes, collapse = ", ")
-  
-  query <- sprintf("INSERT OR IGNORE INTO observaciones (%s) SELECT %s FROM temp_staging", cols_str, cols_str)
-  dbExecute(con, query)
-  dbRemoveTable(con, "temp_staging")
-}
+```sql
+-- Extracto del esquema (scraper.R::db_crear_esquema)
+CREATE TABLE IF NOT EXISTS observaciones(
+  id_obs INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_ejecucion TEXT NOT NULL REFERENCES ejecuciones(id_ejecucion),
+  comercio TEXT NOT NULL, fecha_hora_consulta TEXT NOT NULL, sku_comercio TEXT NOT NULL,
+  producto_raw TEXT NOT NULL, texto_original_anuncio TEXT,
+  precio_cop REAL NOT NULL CHECK(precio_cop > 0), precio_lista_cop REAL, es_promocion INTEGER,
+  disponibilidad TEXT CHECK(disponibilidad IN('disponible','agotado','no_observado')),
+  contenido_total_ml REAL, precio_por_litro REAL, comparable INTEGER DEFAULT 0, id_producto_comun TEXT,
+  UNIQUE(comercio, sku_comercio, fecha_hora_consulta), UNIQUE(id_ejecucion, sku_comercio) /* ... */);
 ```
-:::
 
-Para aislar la complejidad del histórico y alimentar las 8 consultas del informe sin duplicar código SQL, la función `crear_vistas(con)` expuesta en `helpers.R` genera dos vistas temporales sobre la ejecución más reciente (`MAX(id_ejecucion)`):
+```{r control-auditoria, echo=TRUE, eval=db_existe}
+resumen_ejecuciones <- dbGetQuery(con, "
+  SELECT e.id_ejecucion, e.fecha_inicio, e.n_registros AS registros_registrados,
+         COUNT(o.sku_comercio) AS observaciones_reales, e.estado
+  FROM ejecuciones e LEFT JOIN observaciones o ON e.id_ejecucion = o.id_ejecucion
+  GROUP BY e.id_ejecucion")
+tabla_interactiva(resumen_ejecuciones, filtros = "none", page = 10)
+```
 
-- `v_categoria`: Filtra los registros de la última corrida con `precio_cop > 0` y crea la columna calculada `volumen_ml` unificando litros (`L`) y mililitros (`ml`).
-- `v_comparables`: Filtra únicamente los productos homologados (`comparable = 1` e `id_producto_comun IS NOT NULL`) presentes en los tres o cuatro comercios analizados.
+Los conteos registrados coinciden con las observaciones reales de cada ejecución.
 
 ::: {#esquema-dinamico .acc .closed}
-
-### Inspección Dinámica de Tablas en SQLite
+### Inspección de las tablas
 
 ```{r esquema-tablas, echo=FALSE, eval=db_existe}
-tbls <- setdiff(dbListTables(con), "sqlite_sequence")
+tbls <- setdiff(unique(dbListTables(con)), "sqlite_sequence")
 htmltools::tagList(lapply(tbls, function(t) {
   info <- dbGetQuery(con, sprintf("PRAGMA table_info(%s)", dbQuoteIdentifier(con, t)))
-  tags$div(
-    class = "acc closed", id = paste0("esq-", t),
-    tags$h3(HTML(paste0("Esquema de <code>", t, "</code> (", nrow(info), " columnas)"))),
-    tabla_interactiva(
-      data.frame(
-        columna = info$name, 
-        tipo = info$type, 
-        llave_primaria = ifelse(info$pk > 0, "sí", "")
-      ),
-      filtros = "none", page = 25
-    )
-  )
+  tags$div(class = "acc closed", id = paste0("esq-", t),
+    tags$h3(HTML(paste0("<code>", t, "</code> (", nrow(info), " columnas)"))),
+    tabla_interactiva(data.frame(columna = info$name, tipo = info$type, llave_primaria = ifelse(info$pk > 0, "sí", "")),
+                      filtros = "none", page = 30))
 }))
 ```
 :::
 
 ::: {#explorador-datos .acc .closed}
-### Explorador de Datos de la Base de Datos
+### Explorador de datos
 
 ```{r explorador, echo=FALSE, eval=db_existe}
-tbls <- setdiff(dbListTables(con), "sqlite_sequence")
+tbls <- setdiff(unique(dbListTables(con)), c("sqlite_sequence"))
+tbls <- tbls[!grepl("^v_", tbls)]
 htmltools::tagList(lapply(tbls, function(t) {
   d <- dbReadTable(con, t)
-  tags$div(
-    class = "acc closed", id = paste0("t-", t),
+  tags$div(class = "acc closed", id = paste0("t-", t),
     tags$h3(HTML(paste0("Tabla <code>", t, "</code> (", format(nrow(d), big.mark = "."), " filas)"))),
-    tabla_interactiva(d)
-  )
+    tabla_interactiva(d))
 }))
 ```
 :::
-
-
-
-Validaciones de Calidad e Integridad Referencial
-
-```{r validacion-calidad, echo=TRUE, eval=db_existe}
-# 1. Total de observaciones y ejecuciones registradas (Auditoría KDD)
-resumen_ejecuciones <- dbGetQuery(con, "
-  SELECT 
-    e.id_ejecucion,
-    e.inicio_ts AS fecha_inicio,
-    e.n_registros AS registros_registrados,
-    COUNT(o.sku_codigo) AS observaciones_reales,
-    e.estado
-  FROM ejecuciones e
-  LEFT JOIN observaciones o ON e.id_ejecucion = o.id_ejecucion
-  GROUP BY e.id_ejecucion;
-")
-knitr::kable(resumen_ejecuciones, caption = "Control de Auditoría por Ejecución")
-
-# 2. Distribución de registros por comercio en la vista de categoría más reciente
-distribucion_tiendas <- dbGetQuery(con, "
-  SELECT 
-    comercio, 
-    COUNT(*) AS total_productos,
-    SUM(CASE WHEN comparable = 1 THEN 1 ELSE 0 END) AS productos_comparables,
-    ROUND(AVG(precio_cop), 0) AS precio_promedio
-  FROM v_categoria
-  GROUP BY comercio;
-")
-knitr::kable(distribucion_tiendas, caption = "Resumen de la Categoría Activa (v_categoria)")
-```
-
-
-
-
 
 ::::::::::
 
@@ -464,13 +357,14 @@ knitr::kable(distribucion_tiendas, caption = "Resumen de la Categoría Activa (v
 
 ## Consultas SQL
 
+Las consultas usan la ejecución más reciente (vistas `v_categoria` y `v_comparables`). El código completo está en `consultas.sql`.
 
 ::: {#q1 .acc .closed}
 ### 1. ¿Cuántos comercios, productos y observaciones contiene la base?
 ```{sql q1, connection=con, output.var="q1", eval=db_existe}
-SELECT 
+SELECT
   comercio,
-  COUNT(DISTINCT sku_codigo) AS productos_unicos,
+  COUNT(DISTINCT sku_comercio) AS productos_unicos,
   COUNT(*) AS total_observaciones,
   SUM(CASE WHEN comparable = 1 THEN 1 ELSE 0 END) AS obs_comparables
 FROM observaciones
@@ -478,42 +372,40 @@ GROUP BY comercio
 
 UNION ALL
 
-SELECT 
+SELECT
   'TOTAL BASE' AS comercio,
-  COUNT(DISTINCT comercio || '|' || sku_codigo) AS productos_unicos,
+  COUNT(DISTINCT comercio || '|' || sku_comercio) AS productos_unicos,
   COUNT(*) AS total_observaciones,
   SUM(CASE WHEN comparable = 1 THEN 1 ELSE 0 END) AS obs_comparables
 FROM observaciones;
 ```
 ```{r q1-tabla, echo=FALSE, eval=db_existe}
-tabla_interactiva(q1)
+tabla_interactiva(q1, filtros = "none")
+tot1 <- q1[q1$comercio == "TOTAL BASE", ]
 ```
 ::: {.callout .insight}
-La base contiene 4 comercios, 768 productos únicos y 768 observaciones totales (295 comparables), distribuidos entre Éxito (285), Carulla (265), Supermercado Comunal (150) y PriceSmart (68).
-
+La base tiene **4 comercios** y **`r fm(tot1$productos_unicos)` productos únicos** (una observación por producto en esta corrida). Éxito (`r fm(q1$productos_unicos[q1$comercio == "Éxito"])`) y Carulla (`r fm(q1$productos_unicos[q1$comercio == "Carulla"])`) aportan la mayor parte; Supermercado Comunal tiene `r fm(q1$productos_unicos[q1$comercio == "Supermercado Comunal"])` y PriceSmart `r fm(q1$productos_unicos[q1$comercio == "PriceSmart"])`. Hay `r tot1$obs_comparables` observaciones comparables, repartidas por igual en Éxito, Carulla y Comunal. PriceSmart no tiene ninguna porque sus multipacks no coinciden con los demás comercios.
 :::
 :::
 
 ::: {#q2 .acc .closed}
 ### 2. ¿Hay al menos 24 observaciones comparables en una misma ejecución y registros repetidos?
 ```{sql q2, connection=con, output.var="q2", eval=db_existe}
-SELECT 
-  id_ejecucion,
-  COUNT(DISTINCT comercio) AS comercios_activos,
-  COUNT(DISTINCT id_producto_comun) AS presentaciones_comparables,
+SELECT e.id_corrida,
+  COUNT(DISTINCT o.comercio) AS comercios_activos,
+  COUNT(DISTINCT o.id_producto_comun) AS presentaciones_comparables,
   COUNT(*) AS total_obs_comparables,
+  COUNT(*) - COUNT(DISTINCT o.comercio || '|' || o.sku_comercio) AS registros_repetidos,
   CASE WHEN COUNT(*) >= 24 THEN 'CUMPLE (>= 24)' ELSE 'INSUFICIENTE' END AS evaluacion_cobertura
-FROM observaciones
-WHERE comparable = 1
-GROUP BY id_ejecucion;
+FROM observaciones o JOIN ejecuciones e ON e.id_ejecucion = o.id_ejecucion
+WHERE o.comparable = 1
+GROUP BY e.id_corrida;
 ```
-
 ```{r q2-tabla, echo=FALSE, eval=db_existe}
-tabla_interactiva(q2)
+tabla_interactiva(q2, filtros = "none")
 ```
-
-::: {.callout .insight}
-Sí, se registran 36 observaciones comparables activas en 3 comercios (superando el mínimo de 24) y sin presencia de registros duplicados por comercio.
+::: {.callout .success}
+**Sí.** La corrida `r q2$id_corrida[1]` tiene **`r q2$total_obs_comparables[1]` observaciones comparables** (`r q2$presentaciones_comparables[1]` presentaciones × `r q2$comercios_activos[1]` comercios), por encima del mínimo de 24, y **`r q2$registros_repetidos[1]` registros repetidos** del mismo producto y comercio.
 :::
 :::
 
@@ -521,42 +413,35 @@ Sí, se registran 36 observaciones comparables activas en 3 comercios (superando
 ### 3. Precio mínimo, máximo y promedio por presentación (con empates)
 ```{sql q3, connection=con, output.var="q3", eval=db_existe}
 WITH estadisticas AS (
-  SELECT 
-    id_producto_comun,
+  SELECT id_producto_comun,
     MIN(precio_cop) AS precio_min,
     MAX(precio_cop) AS precio_max,
     ROUND(AVG(precio_cop), 0) AS precio_promedio
   FROM v_comparables
   GROUP BY id_producto_comun
 )
-SELECT 
-  e.id_producto_comun,
-  e.precio_min,
-  e.precio_max,
-  e.precio_promedio,
+SELECT e.id_producto_comun, e.precio_min, e.precio_max, e.precio_promedio,
   GROUP_CONCAT(c.comercio, ' | ') AS comercio_menor_precio
 FROM estadisticas e
-JOIN v_comparables c 
-  ON e.id_producto_comun = c.id_producto_comun 
- AND e.precio_min = c.precio_cop
+JOIN v_comparables c
+  ON e.id_producto_comun = c.id_producto_comun AND e.precio_min = c.precio_cop
 GROUP BY e.id_producto_comun, e.precio_min, e.precio_max, e.precio_promedio
 ORDER BY e.id_producto_comun;
 ```
-
 ```{r q3-tabla, echo=FALSE, eval=db_existe}
 tabla_interactiva(q3, cols_cop = c("precio_min", "precio_max", "precio_promedio"))
+gan <- sort(table(unlist(str_split(q3$comercio_menor_precio, " \\| "))), decreasing = TRUE)
+n_emp <- sum(str_detect(q3$comercio_menor_precio, "\\|"))
 ```
-
 ::: {.callout .tie}
-Se evalúan 36 presentaciones comparables (ej. PROD_COM_01 con mínimo de $142, máximo de $4.290 y promedio de $1.575 en Éxito), concatenando comercios en caso de empates en el precio más bajo.
+En las **`r nrow(q3)` presentaciones idénticas**, el comercio de menor precio se reparte así (en un empate cuenta para cada comercio): **`r paste(names(gan), gan, sep = " = ", collapse = "; ")`**. Hubo `r n_emp` presentaciones con empate. `r if (max(gan) < nrow(q3)) "Ningún comercio es el más barato en todas" else "Un comercio domina"`, así que la conclusión debe darse por producto y no por tienda. Se compara solo la misma presentación, no promedios de surtidos distintos.
 :::
 :::
 
 ::: {#q4 .acc .closed}
 ### 4. Ahorro en COP y en porcentaje al elegir la oferta más económica
 ```{sql q4, connection=con, output.var="q4", eval=db_existe}
-SELECT 
-  id_producto_comun,
+SELECT id_producto_comun,
   MIN(precio_cop) AS precio_minimo,
   MAX(precio_cop) AS precio_maximo,
   (MAX(precio_cop) - MIN(precio_cop)) AS ahorro_cop,
@@ -565,127 +450,111 @@ FROM v_comparables
 GROUP BY id_producto_comun
 ORDER BY ahorro_porcentaje DESC;
 ```
-
 ```{r q4-tabla, echo=FALSE, eval=db_existe}
-tabla_interactiva(q4, cols_cop = c("precio_minimo", "precio_maximo", "ahorro_cop"))
+tabla_interactiva(q4, cols_cop = c("precio_minimo", "precio_maximo", "ahorro_cop"), cols_pct = "ahorro_porcentaje")
 ```
-
 ::: {.callout .insight}
-El ahorro alcanza hasta cerca del 99% en productos como PROD_COM_11 ($8.896 COP) y PROD_COM_03 ($18.800 COP) al comparar la tienda más costosa con la más económica.
-
+Elegir siempre el comercio más barato ahorra en mediana **`r fm(median(q4$ahorro_porcentaje), 1)` %** por presentación (`r fmt_cop(median(q4$ahorro_cop))`). El mayor ahorro es **`r q4$id_producto_comun[1]`**: `r fm(q4$ahorro_porcentaje[1], 1)` % (`r fmt_cop(q4$ahorro_cop[1])`). En `r sum(q4$ahorro_porcentaje > 20)` presentaciones el ahorro supera el 20 %. Las diferencias grandes con el mismo nombre y tamaño en los tres comercios se validaron manualmente (ver *Preparación*).
 :::
 :::
 
 ::: {#q5 .acc .closed}
-### 5. Menor precio por unidad de contenido entre tamaños comparables
+### 5. Menor precio por litro entre tamaños comparables de una misma marca y variante
 ```{sql q5, connection=con, output.var="q5", eval=db_existe}
-WITH ranking_unidad AS (
-  SELECT 
-    id_producto_comun,
-    comercio,
-    producto_raw,
-    presentacion_raw,
-    volumen_ml,
-    precio_cop,
-    ROUND(precio_por_litro, 2) AS precio_por_litro_cop,
-    RANK() OVER (PARTITION BY id_producto_comun ORDER BY precio_por_litro ASC) AS rnk
-  FROM v_comparables
-  WHERE volumen_ml > 0 AND precio_cop > 0
+WITH t AS (
+  SELECT p.marca, p.subcategoria, p.variante, v.id_producto_comun,
+         v.contenido_total_ml AS volumen_ml, v.unidades, v.comercio, v.precio_cop,
+         ROUND(v.precio_por_litro, 0) AS cop_por_litro,
+         ROW_NUMBER() OVER (PARTITION BY v.id_producto_comun ORDER BY v.precio_por_litro) AS pos
+  FROM v_comparables v
+  JOIN productos_comunes p ON p.id_producto_comun = v.id_producto_comun AND p.id_corrida = v.id_corrida
+), m AS (
+  SELECT * FROM t WHERE pos = 1
+), g AS (
+  SELECT *,
+    COUNT(*) OVER (PARTITION BY marca, subcategoria, variante) AS n_tamanos,
+    RANK() OVER (PARTITION BY marca, subcategoria, variante ORDER BY cop_por_litro) AS ranking_cop_litro
+  FROM m
 )
-SELECT 
-  id_producto_comun,
-  comercio,
-  producto_raw,
-  volumen_ml,
-  precio_cop,
-  precio_por_litro_cop
-FROM ranking_unidad
-WHERE rnk = 1
-ORDER BY precio_por_litro_cop ASC;
+SELECT marca, subcategoria, variante, id_producto_comun, volumen_ml, unidades,
+       comercio AS comercio_mas_barato, precio_cop, cop_por_litro, ranking_cop_litro
+FROM g
+WHERE n_tamanos >= 2
+ORDER BY marca, variante, cop_por_litro;
 ```
-
 ```{r q5-tabla, echo=FALSE, eval=db_existe}
-tabla_interactiva(q5, cols_cop = c("precio_cop", "precio_por_litro_cop"))
+tabla_interactiva(q5, cols_cop = c("precio_cop", "cop_por_litro"), filtros = "top")
+g5 <- q5 |> group_by(marca, subcategoria, variante) |>
+  summarise(mayor_mas_barato = cop_por_litro[which.max(volumen_ml)] <= min(cop_por_litro), .groups = "drop")
 ```
-
 ::: {.callout .success}
-La opción con mejor valor por dinero estandarizado es el Agua Cristal de 6000 ml en Carulla ($94 COP/Litro), diferenciando el menor costo unitario del desembolso total.
-
+Se compararon `r nrow(g5)` familias (marca + variante) con dos o más tamaños, sin mezclar unidades (todo en COP por litro). En **`r sum(g5$mayor_mas_barato)` de `r nrow(g5)`** familias la presentación más grande es la de menor precio por litro; en las demás, un tamaño intermedio, un empaque de otro formato o una promoción específica sale mejor. Una presentación grande implica un **desembolso total mayor** aunque cueste menos por litro, y esa diferencia debe decirse al consumidor. Las columnas `precio_cop` y `cop_por_litro` permiten verla.
 :::
 :::
 
 ::: {#q6 .acc .closed}
 ### 6. Mayores diferencias de precio entre comercios
 ```{sql q6, connection=con, output.var="q6", eval=db_existe}
-SELECT 
-  id_producto_comun,
-  COUNT(DISTINCT comercio) AS num_comercios,
-  MIN(precio_cop) AS precio_minimo,
-  MAX(precio_cop) AS precio_maximo,
-  (MAX(precio_cop) - MIN(precio_cop)) AS brecha_cop,
-  ROUND(((MAX(precio_cop) - MIN(precio_cop)) * 100.0 / MIN(precio_cop)), 2) AS sobreprecio_relativo_pct
-FROM v_comparables
-GROUP BY id_producto_comun
+SELECT c.id_producto_comun,
+  COUNT(DISTINCT c.comercio) AS num_comercios,
+  MIN(c.precio_cop) AS precio_minimo,
+  MAX(c.precio_cop) AS precio_maximo,
+  (MAX(c.precio_cop) - MIN(c.precio_cop)) AS brecha_cop,
+  ROUND((MAX(c.precio_cop) - MIN(c.precio_cop)) * 100.0 / MAX(c.precio_cop), 2) AS ahorro_pct,
+  ROUND((MAX(c.precio_cop) - MIN(c.precio_cop)) * 100.0 / MIN(c.precio_cop), 2) AS sobreprecio_relativo_pct,
+  (SELECT c2.comercio FROM v_comparables c2 WHERE c2.id_producto_comun = c.id_producto_comun
+   ORDER BY c2.precio_cop DESC LIMIT 1) AS comercio_mas_caro
+FROM v_comparables c
+GROUP BY c.id_producto_comun
 HAVING num_comercios >= 3
-ORDER BY sobreprecio_relativo_pct DESC;
+ORDER BY ahorro_pct DESC;
 ```
-
 ```{r q6-tabla, echo=FALSE, eval=db_existe}
 tabla_interactiva(q6, cols_cop = c("precio_minimo", "precio_maximo", "brecha_cop"))
+cuenta_caro <- sort(table(q6$comercio_mas_caro), decreasing = TRUE)
 ```
-
 ::: {.callout .insight}
-Las mayores brechas ocurren en productos presentes en al menos 3 cadenas como PROD_COM_11 y PROD_COM_03, reflejando altos sobreprecios relativos entre tiendas.
+Las presentaciones están ordenadas por ahorro porcentual. La mayor brecha es **`r q6$id_producto_comun[1]`**: `r fmt_cop(q6$precio_minimo[1])` frente a `r fmt_cop(q6$precio_maximo[1])` (`r fm(q6$ahorro_pct[1], 1)` % de ahorro, `r fm(q6$sobreprecio_relativo_pct[1], 1)` % de sobreprecio sobre el mínimo). El comercio que más veces aparece como el más caro es **`r names(cuenta_caro)[1]`** (`r cuenta_caro[1]` presentaciones). En empates se muestra un solo comercio.
 :::
 :::
 
 ::: {#q7 .acc .closed}
 ### 7. Datos faltantes o inconsistentes que afectan la comparación
 ```{sql q7, connection=con, output.var="q7", eval=db_existe}
-SELECT 
-  COUNT(*) AS total_observaciones_evaluadas,
+SELECT COUNT(*) AS total_observaciones_evaluadas,
   SUM(CASE WHEN precio_cop IS NULL OR precio_cop <= 0 THEN 1 ELSE 0 END) AS precios_invalidos_nulos,
-  SUM(CASE WHEN contenido_num IS NULL OR contenido_num <= 0 THEN 1 ELSE 0 END) AS contenido_faltante,
+  SUM(CASE WHEN contenido_total_ml IS NULL OR contenido_total_ml <= 0 THEN 1 ELSE 0 END) AS contenido_faltante,
   SUM(CASE WHEN unidad_medida IS NULL OR unidad_medida = '' THEN 1 ELSE 0 END) AS unidad_faltante,
-  SUM(CASE WHEN marca_raw IS NULL OR marca_raw = '' OR marca_raw = 'OTRAS' THEN 1 ELSE 0 END) AS marca_no_identificada,
-  SUM(CASE WHEN sku_codigo IS NULL OR sku_codigo = '' OR sku_codigo = 'N/A' THEN 1 ELSE 0 END) AS sku_faltante
-FROM observaciones
-WHERE id_ejecucion = (SELECT MAX(id_ejecucion) FROM observaciones);
+  SUM(CASE WHEN marca_estandarizada IS NULL THEN 1 ELSE 0 END) AS marca_no_identificada,
+  SUM(CASE WHEN sku_comercio IS NULL OR sku_comercio = '' THEN 1 ELSE 0 END) AS sku_faltante,
+  SUM(CASE WHEN disponibilidad = 'no_observado' THEN 1 ELSE 0 END) AS disponibilidad_no_observada
+FROM v_categoria;
 ```
-
 ```{r q7-tabla, echo=FALSE, eval=db_existe}
-tabla_interactiva(q7)
+tabla_interactiva(q7, filtros = "none")
 ```
-
 ::: {.callout .warning}
-En la ejecución más reciente con 768 observaciones evaluadas, se registraron 0 precios, contenidos o códigos nulos e inválidos, asegurando la calidad para el análisis.
-
+De `r fm(q7$total_observaciones_evaluadas)` observaciones válidas, `r q7$marca_no_identificada` (`r fm(100 * q7$marca_no_identificada / q7$total_observaciones_evaluadas, 1)` %) no tienen marca identificada: no afecta la comparación de comparables, que exige marca, pero sí limita análisis por marca. Los ceros en precio y contenido **no significan que el sitio los publicara siempre**: los registros sin precio o sin volumen líquido se rechazan antes de insertar y están en `descartes` (`r fm(n_desc_total)` registros). La calidad de la base es consecuencia de ese filtro, no una propiedad de las páginas.
 :::
 :::
 
 ::: {#q8 .acc .closed}
 ### 8. Tamaño de la oferta por comercio y ejecución, y calidad de la descripción
 ```{sql q8, connection=con, output.var="q8", eval=db_existe}
-SELECT 
-  e.id_ejecucion,
-  e.inicio_ts AS fecha_inicio,
-  o.comercio,
+SELECT e.id_corrida, MIN(e.fecha_inicio) AS fecha_inicio, o.comercio,
   COUNT(*) AS total_productos_extraidos,
   ROUND(SUM(CASE WHEN o.texto_original_anuncio IS NOT NULL AND LENGTH(o.texto_original_anuncio) > 10 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_con_descripcion,
-  ROUND(SUM(CASE WHEN o.marca_raw IS NOT NULL AND o.marca_raw != '' AND o.marca_raw != 'OTRAS' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_con_marca,
-  ROUND(SUM(CASE WHEN o.contenido_num IS NOT NULL AND o.contenido_num > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_con_contenido
-FROM ejecuciones e
-JOIN observaciones o ON e.id_ejecucion = o.id_ejecucion
-GROUP BY e.id_ejecucion, o.comercio
-ORDER BY e.id_ejecucion DESC, total_productos_extraidos DESC;
+  ROUND(SUM(CASE WHEN o.marca_estandarizada IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_con_marca,
+  ROUND(SUM(CASE WHEN o.contenido_total_ml > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_con_contenido
+FROM ejecuciones e JOIN observaciones o ON e.id_ejecucion = o.id_ejecucion
+GROUP BY e.id_corrida, o.comercio
+ORDER BY e.id_corrida DESC, total_productos_extraidos DESC;
 ```
-
 ```{r q8-tabla, echo=FALSE, eval=db_existe}
-tabla_interactiva(q8)
+tabla_interactiva(q8, filtros = "none")
 ```
-
 ::: {.callout .insight}
-Cuantifica los productos extraídos por cada ejecución y evalúa el porcentaje de completitud en campos clave como descripción, marca y volumen.
+Éxito (`r q8$total_productos_extraidos[q8$comercio == "Éxito"]`) y Carulla (`r q8$total_productos_extraidos[q8$comercio == "Carulla"]`) ofrecen una oferta mucho más amplia que Supermercado Comunal (`r q8$total_productos_extraidos[q8$comercio == "Supermercado Comunal"]`) y PriceSmart (`r q8$total_productos_extraidos[q8$comercio == "PriceSmart"]`). Todas las observaciones tienen descripción y contenido (por las reglas de entrada); la marca se identifica entre `r min(q8$pct_con_marca)` % y `r max(q8$pct_con_marca)` %, siendo Supermercado Comunal el comercio con más productos sin marca reconocida, porque sus nombres vienen abreviados.
 :::
 :::
 
@@ -695,194 +564,113 @@ Cuantifica los productos extraídos por cada ejecución y evalúa el porcentaje 
 
 ## Visualizaciones
 
-
-::: {.callout .method}
-En esta fase del proceso KDD, transformamos las tablas relacionales extraídas de SQLite (`v_categoria` y `v_comparables`) en representaciones gráficas interactivas. Los gráficos permiten identificar patrones de dispersión de precios, asimetrías de mercado entre comercios y la eficiencia del gasto por unidad de medida (\( \text{COP}/\text{Litro} \)).
-:::
+Los gráficos salen de las vistas de SQLite y usan **un color fijo por comercio**. Son interactivos: se pueden ocultar series desde la leyenda.
 
 ::: {#fig-oferta .acc .closed}
-#####  Distribución de la Oferta y Cobertura de Productos Comparables por Comercio
-
+### Oferta recolectada y presentaciones comparables por comercio
 ```{r fig-oferta-chunk, echo=TRUE, eval=db_existe}
-# Extracción de datos de volumen por comercio
 df_oferta <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    COUNT(*) AS total_productos,
-    SUM(CASE WHEN comparable = 1 THEN 1 ELSE 0 END) AS comparables
-  FROM observaciones
-  WHERE id_ejecucion = (SELECT MAX(id_ejecucion) FROM observaciones)
-  GROUP BY comercio
-  ORDER BY total_productos DESC;
-")
-
-# Construcción de gráfico con ggplot2
-p1 <- ggplot(df_oferta, aes(x = reorder(comercio, total_productos), y = total_productos, fill = comercio)) +
-  geom_col(alpha = 0.85, width = 0.6, show.legend = FALSE) +
-  geom_col(aes(y = comparables), alpha = 0.95, width = 0.3, fill = "#10B981") +
-  geom_text(aes(label = paste0(total_productos, " (", comparables, " comp.)")), 
-            hjust = -0.1, size = 3.5, fontface = "bold") +
-  coord_flip() +
-  scale_y_continuous(limits = c(0, 320)) +
-  scale_fill_manual(values = c("Éxito" = "#FBBF24", "Carulla" = "#059669", 
-                               "Supermercado Comunal" = "#3B82F6", "PriceSmart" = "#8B5CF6")) +
-  labs(
-    title = "Profundidad del Surtido Capturado por Cadena (Total vs. Comparables)",
-    subtitle = "Barras anchas: Catálogo total extraído | Barras delgadas verdes: Canasta homogénea",
-    x = "Comercio",
-    y = "Número de Productos (SKUs)",
-    caption = "Fuente: Base de datos comparador_precios.sqlite"
-  ) +
-  theme_minimal(base_size = 12)
-
+  SELECT comercio, COUNT(*) AS total_productos,
+         SUM(CASE WHEN comparable = 1 THEN 1 ELSE 0 END) AS comparables
+  FROM v_categoria GROUP BY comercio ORDER BY total_productos DESC")
+p1 <- ggplot(df_oferta, aes(x = reorder(comercio, total_productos))) +
+  geom_col(aes(y = total_productos, fill = comercio), width = 0.6, alpha = 0.85, show.legend = FALSE) +
+  geom_col(aes(y = comparables), width = 0.3, fill = "#222222", alpha = 0.8) +
+  geom_text(aes(y = total_productos, label = paste0(total_productos, " (", comparables, " comp.)")), hjust = -0.1, size = 3.5) +
+  coord_flip() + scale_y_continuous(expand = expansion(mult = c(0, .3))) +
+  scale_fill_manual(values = COL_COMERCIO) +
+  labs(title = "Productos válidos por comercio y comparables (barra oscura)",
+       x = NULL, y = "Productos (SKU)", caption = "Fuente: comparador_precios.sqlite · v_categoria") + tema_kdd()
 grafico_interactivo(p1)
 ```
-
-
 ::: {.callout .insight}
- Éxito (285) y Carulla (265) concentran más del **71.6%** del volumen total de observaciones extraídas (768 productos), reflejando un catálogo digital más extenso en la categoría. Sin embargo, al filtrar la canasta de productos estrictamente comparables (295 observaciones en total), la representatividad se equilibra entre las cadenas tradicionales, permitiendo la construcción de la canasta común.
+Éxito y Carulla concentran `r fm(100 * sum(df_oferta$total_productos[df_oferta$comercio %in% c("Éxito", "Carulla")]) / sum(df_oferta$total_productos), 1)` % de los productos válidos. Los comparables se reparten por igual entre los tres comercios que forman la canasta (cada uno con las mismas presentaciones) y son una fracción pequeña de cada oferta: la mayoría de los productos de un comercio no tiene un equivalente exacto en los demás.
 :::
 :::
 
 ::: {#fig-dispersion .acc .closed}
-#####  Dispersión y Brecha de Precios Nominal (\$ COP) en Presentaciones Comparables
-
+### Brecha de precios en las presentaciones comparables
 ```{r fig-dispersion-chunk, echo=TRUE, eval=db_existe}
-# Consulta de precios por presentación homogénea
 df_brechas <- dbGetQuery(con, "
-  SELECT 
-    id_producto_comun,
-    MIN(precio_cop) AS precio_min,
-    MAX(precio_cop) AS precio_max,
-    ROUND(AVG(precio_cop), 0) AS precio_prom,
-    (MAX(precio_cop) - MIN(precio_cop)) AS brecha_cop
-  FROM v_comparables
-  GROUP BY id_producto_comun
-  HAVING brecha_cop > 0
-  ORDER BY brecha_cop DESC
-  LIMIT 10;
-")
-
+  SELECT id_producto_comun, MIN(precio_cop) AS precio_min, MAX(precio_cop) AS precio_max,
+         ROUND(AVG(precio_cop)) AS precio_prom, MAX(precio_cop) - MIN(precio_cop) AS brecha_cop
+  FROM v_comparables GROUP BY id_producto_comun HAVING brecha_cop > 0
+  ORDER BY brecha_cop DESC LIMIT 10")
 p2 <- ggplot(df_brechas, aes(x = reorder(id_producto_comun, brecha_cop))) +
-  geom_segment(aes(xend = id_producto_comun, y = precio_min, yend = precio_max), color = "#9CA3AF", size = 1.2) +
-  geom_point(aes(y = precio_min, color = "Mínimo (Más Económico)"), size = 3.5) +
-  geom_point(aes(y = precio_max, color = "Máximo (Más Costoso)"), size = 3.5) +
+  geom_segment(aes(xend = id_producto_comun, y = precio_min, yend = precio_max), color = "#9CA3AF", linewidth = 1.2) +
+  geom_point(aes(y = precio_min, color = "Mínimo"), size = 3.5) +
+  geom_point(aes(y = precio_max, color = "Máximo"), size = 3.5) +
   geom_point(aes(y = precio_prom, color = "Promedio"), size = 2.5, shape = 18) +
-  scale_y_continuous(labels = scales::dollar_format(prefix = "$", big.mark = ".")) +
-  scale_color_manual(values = c("Mínimo (Más Económico)" = "#10B981", 
-                                "Máximo (Más Costoso)" = "#EF4444", 
-                                "Promedio" = "#F59E0B")) +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$", big.mark = ".", decimal.mark = ",")) +
+  scale_color_manual(values = c("Mínimo" = "#009E73", "Máximo" = "#D55E00", "Promedio" = "#E69F00")) +
   coord_flip() +
-  labs(
-    title = "Top 10 Presentaciones con Mayor Dispersión y Brecha de Precios",
-    subtitle = "Mapeo de Precio Mínimo, Máximo y Promedio en $ COP por id_producto_comun",
-    x = "Código de Presentación Homogénea",
-    y = "Precio en Pesos Colombianos ($ COP)",
-    color = "Referencia"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "top")
-
+  labs(title = "Las 10 presentaciones con mayor brecha de precio (COP)", x = "Presentación comparable", y = "Precio (COP)", color = NULL) +
+  tema_kdd()
 grafico_interactivo(p2)
 ```
-
 ::: {.callout .insight}
-Existen sobreprecios significativos en productos clave como `PROD_COM_22` y `PROD_COM_03`. 
+Las diez mayores brechas van de `r fmt_cop(min(df_brechas$brecha_cop))` a `r fmt_cop(max(df_brechas$brecha_cop))` por unidad. Son las presentaciones donde elegir bien el comercio pesa más en el bolsillo. Una brecha grande mide la diferencia, no la calidad del comercio: el mismo comercio puede ser el más barato en un producto y el más caro en otro.
 :::
 :::
 
 ::: {#fig-eficiencia .acc .closed}
-#####  Eficiencia de Compra: Costo por Litro (\$ COP/L) en Función del Volumen (ml)
-
+### Precio por litro frente al tamaño de la presentación
 ```{r fig-eficiencia-chunk, echo=TRUE, eval=db_existe}
-# Consulta de costo unitario por volumen
 df_unitario <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    producto_raw,
-    volumen_ml,
-    precio_cop,
-    precio_por_litro
-  FROM v_categoria
-  WHERE volumen_ml > 0 AND precio_por_litro > 0 AND volumen_ml <= 6000;
-")
-
-p3 <- ggplot(df_unitario, aes(x = volumen_ml, y = precio_por_litro, color = comercio)) +
-  geom_point(alpha = 0.7, size = 3) +
-  geom_smooth(method = "loess", se = FALSE, color = "#6B7280", linetype = "dashed", size = 0.8) +
-  annotate("text", x = 5200, y = 800, label = "Agua Cristal 6000 ml\n(Carulla: $94 COP/L)", 
-           color = "#059669", fontface = "bold", size = 3.5) +
-  scale_y_continuous(labels = scales::dollar_format(prefix = "$", big.mark = ".")) +
-  scale_x_continuous(labels = scales::comma_format(suffix = " ml")) +
-  scale_color_manual(values = c("Éxito" = "#FBBF24", "Carulla" = "#059669", 
-                               "Supermercado Comunal" = "#3B82F6", "PriceSmart" = "#8B5CF6")) +
-  labs(
-    title = "Economías de Escala: Costo Unitario ($ COP/Litro) vs. Contenido (ml)",
-    subtitle = "Identificación de la opción de mayor eficiencia: Agua Cristal 6000 ml en Carulla ($94 COP/L)",
-    x = "Volumen del Producto (Millilitros)",
-    y = "Precio Normalizado por Litro ($ COP / Litro)",
-    color = "Comercio"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "bottom")
-
-grafico_interactivo(p3)
+  SELECT comercio, producto_raw, volumen_ml, precio_cop, precio_por_litro
+  FROM v_categoria WHERE volumen_ml > 0 AND precio_por_litro > 0 AND volumen_ml <= 6000")
+rho <- suppressWarnings(cor(df_unitario$volumen_ml, df_unitario$precio_por_litro, method = "spearman"))
+p3 <- ggplot(df_unitario, aes(x = volumen_ml, y = precio_por_litro)) +
+  geom_point(aes(color = comercio, text = producto_raw), alpha = 0.6, size = 2.2) +
+  geom_smooth(method = "loess", formula = y ~ x, se = FALSE, color = "#6B7280", linetype = "dashed", linewidth = 0.8) +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$", big.mark = ".", decimal.mark = ",")) +
+  scale_x_continuous(labels = scales::label_comma(suffix = " mL", big.mark = ".")) +
+  scale_color_manual(values = COL_COMERCIO) +
+  labs(title = "Costo por litro (COP/L) según el contenido de la presentación",
+       x = "Contenido total (mL)", y = "COP por litro", color = NULL) + tema_kdd()
+grafico_interactivo(p3, tooltip = c("x", "y", "text"))
 ```
-
 ::: {.callout .success}
-Se evidencia una clara tendencia de curva decreciente (economías de escala): a mayor volumen de la presentación, menor es el costo unitario por litro. El producto de mejor desempeño estandarizado es el *Agua Cristal de 6000 ml en Carulla*, alcanzando un costo óptimo de *\$94 COP/Litro*.
+La correlación de Spearman entre contenido y precio por litro es **`r fm(rho, 2)`**: `r if (rho < -0.2) "a mayor contenido, menor costo por litro en promedio (economía de escala)" else if (rho > 0.2) "el precio por litro tiende a subir con el contenido" else "no hay una relación clara en el conjunto completo"`. El conjunto mezcla categorías de precio muy distinto (energizantes frente a agua), así que la comparación fina por producto es la de la consulta 5, que no mezcla marcas. Los puntos altos a la izquierda son sobre todo energizantes y té en botellas pequeñas.
 :::
 :::
 
-::: {#fig-calidad .acc .closed}
+::: {#fig-canasta .acc .closed}
+### Canasta de las presentaciones comparables
+```{r fig-canasta-chunk, echo=TRUE, eval=db_existe}
+canasta <- dbGetQuery(con, "SELECT comercio, COUNT(*) AS n_presentaciones, SUM(precio_cop) AS total_cop
+                            FROM v_comparables GROUP BY comercio ORDER BY total_cop")
+mix <- dbGetQuery(con, "SELECT SUM(m) AS total_cop FROM
+                        (SELECT MIN(precio_cop) AS m FROM v_comparables GROUP BY id_producto_comun)")$total_cop
+niv <- c(canasta$comercio, "Mejor precio de cada producto")
+cp <- bind_rows(canasta |> select(comercio, total_cop), tibble(comercio = "Mejor precio de cada producto", total_cop = mix)) |>
+  mutate(comercio = factor(comercio, levels = niv))
+p5 <- ggplot(cp, aes(x = comercio, y = total_cop, fill = comercio)) +
+  geom_col(width = 0.6, show.legend = FALSE) +
+  geom_text(aes(label = fmt_cop(total_cop)), vjust = -0.4, size = 3.5) +
+  scale_fill_manual(values = c(COL_COMERCIO, "Mejor precio de cada producto" = "#444444")) +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$", big.mark = ".", decimal.mark = ","), expand = expansion(mult = c(0, .12))) +
+  labs(title = "Costo de una unidad de cada presentación comparable", x = NULL, y = "Total (COP)") + tema_kdd()
+grafico_interactivo(p5)
+```
+::: {.callout .success}
+Comprar **una unidad de cada una de las `r canasta$n_presentaciones[1]` presentaciones** cuesta `r fmt_cop(canasta$total_cop[1])` en **`r canasta$comercio[1]`** (el más barato en bloque) y `r fmt_cop(canasta$total_cop[nrow(canasta)])` en `r canasta$comercio[nrow(canasta)]`. Comprar cada producto donde es más barato baja el total a `r fmt_cop(mix)`, un ahorro de **`r fm(100 * (1 - mix / canasta$total_cop[1]), 1)` %** frente al mejor comercio único. La canasta tiene cobertura completa (todas las presentaciones están en los tres comercios) y usa precios de una misma corrida, pero **no incluye envío, mínimos de compra ni condiciones de promoción**.
+:::
+:::
 
-```{r fig-calidad-chunk, echo=TRUE, eval=db_existe}
-# Consulta de métricas de calidad de la ejecución más reciente
-df_calidad <- dbGetQuery(con, "
-  SELECT 
-    comercio,
-    100.0 AS pct_precios_validos,
-    ROUND(SUM(CASE WHEN contenido_num > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_contenido,
-    ROUND(SUM(CASE WHEN marca_raw IS NOT NULL AND marca_raw != '' AND marca_raw != 'OTRAS' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_marca
-  FROM observaciones
-  WHERE id_ejecucion = (SELECT MAX(id_ejecucion) FROM observaciones)
-  GROUP BY comercio;
-")
-
-df_calidad_long <- tidyr::pivot_longer(df_calidad, cols = starts_with("pct_"), 
-                                      names_to = "metrica", values_to = "porcentaje")
-
-df_calidad_long$metrica <- factor(df_calidad_long$metrica, 
-  levels = c("pct_precios_validos", "pct_contenido", "pct_marca"),
-  labels = c("Precio Válido (>0)", "Contenido Estandarizado", "Marca Identificada")
-)
-
-p4 <- ggplot(df_calidad_long, aes(x = comercio, y = porcentaje, fill = metrica)) +
-  geom_bar(stat = "identity", position = "dodge", alpha = 0.85) +
-  geom_text(aes(label = paste0(porcentaje, "%")), position = position_dodge(width = 0.9), 
-            vjust = -0.3, size = 3) +
-  scale_y_continuous(limits = c(0, 115), breaks = seq(0, 100, 20)) +
-  scale_fill_manual(values = c("Precio Válido (>0)" = "#10B981", 
-                               "Contenido Estandarizado" = "#3B82F6", 
-                               "Marca Identificada" = "#8B5CF6")) +
-  labs(
-    title = "Indicadores de Calidad e Integridad de Datos por Cadena",
-    subtitle = "Porcentaje de completitud en la corrida más reciente (768 observaciones totales / 0 nulos)",
-    x = "Comercio",
-    y = "Porcentaje de Completitud (%)",
-    fill = "Atributo Auditado"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "bottom")
-
+::: {#fig-descartes .acc .closed}
+### Qué se descartó y en qué comercio
+```{r fig-descartes-chunk, echo=TRUE, eval=db_existe}
+df_desc <- dbGetQuery(con, "SELECT comercio, motivo, COUNT(*) AS n FROM descartes GROUP BY comercio, motivo")
+p4 <- ggplot(df_desc, aes(x = reorder(motivo, n, sum), y = n, fill = comercio)) +
+  geom_col() + coord_flip() + scale_fill_manual(values = COL_COMERCIO) +
+  labs(title = "Registros descartados por motivo", x = NULL, y = "Registros", fill = NULL) + tema_kdd()
 grafico_interactivo(p4)
 ```
-
 ::: {.callout .insight}
-La ejecución más reciente muestra una efectividad del 100% en la captura de precios no nulos (`0 precios inválidos`) sobre las 768 observaciones evaluadas. Esto certifica que el pipeline de limpieza en `scraper.R` y la estructura normalizada de SQLite proporcionan una base limpia y robusta, apta para modelado avanzado sin riesgo de sesgo por valores faltantes.
+Los motivos dominantes son `r paste(head(df_desc |> group_by(motivo) |> summarise(n = sum(n)) |> arrange(desc(n)) |> pull(motivo), 3), collapse = ", ")`: es decir, el ruido de los buscadores de marca y las fichas sin volumen líquido. Esto respalda la decisión de filtrar en la recolección, y cada descarte queda auditable.
 :::
 :::
-
 
 ::::::::::
 
@@ -890,50 +678,48 @@ La ejecución más reciente muestra una efectividad del 100% en la captura de pr
 
 ## Limitaciones y conclusiones
 
-::: {.callout .method}
-Esta sección evalúa el impacto práctico de los hallazgos del comparador de precios, analiza el efecto de las políticas tarifarias minoristas, establece pautas para la orientación inteligente del consumidor y explicita las restricciones metodológicas del estudio.
-:::
+### Conclusiones para el consumidor
 
+1. **No hay un comercio barato para todo.** Entre las `r nrow(q3)` presentaciones comparables, el menor precio se reparte así: `r paste(names(gan), gan, sep = " = ", collapse = "; ")` (los empates cuentan para cada comercio). La recomendación depende del producto; la tabla de la consulta 3 indica dónde comprar cada uno.
+2. **Elegir bien ahorra.** El ahorro mediano al comprar en el comercio más barato es `r fm(median(q4$ahorro_porcentaje), 1)` %, y llega a `r fm(q4$ahorro_porcentaje[1], 1)` % en la presentación con mayor brecha. Comprar cada producto en su comercio más barato reduce la canasta completa `r fm(100 * (1 - mix / canasta$total_cop[1]), 1)` % frente al mejor comercio único, siempre que no pesen envíos ni mínimos de compra.
+3. **El tamaño importa, pero no siempre.** En `r sum(g5$mayor_mas_barato)` de `r nrow(g5)` familias de producto la presentación más grande tiene el menor costo por litro. Hay que separar el **ahorro unitario** (COP/L) del **desembolso total**: comprar grande cuesta menos por litro, pero exige pagar más de una vez.
 
-
-   - La evaluación sobre las **36 presentaciones comparables** reveló dispersiones extremas entre competidores para un mismo producto idéntico. Se registraron sobreprecios relativos que alcanzan hasta el **99%** en ítems de alta rotación (ej. `PROD_COM_11` y `PROD_COM_03`).
-   - El uso de la bandera `es_promocion` demostró que las ofertas nominales de las grandes cadenas (Éxito y Carulla) suelen igualar transitoriamente los precios base de comercios independientes o formatos mayoristas como PriceSmart y Supermercado Comunal, más no necesariamente superarlos en costo unitario estandarizado.
-
-
-   - De los **768 productos únicos** capturados en la base relacional, solo **295 observaciones** cumplieron con los criterios de estandarización para integrar la canasta común comparativa (`comparable = 1`). Esto evidencia que el principal mecanismo de diferenciación de las cadenas minoristas es la exclusividad en la presentación de empaques (marcas propias o gramajes asimétricos), dificultando la comparación directa por el consumidor.
-
-**Limitaciones Metodológicas y Técnicas**
+### Limitaciones
 
 ::: {.callout .warning}
-1. **Volatilidad Temporal e Inestabilidad de Ofertas:**
-   Las páginas web de comercio electrónico modifican precios dinámicamente según algoritmos de demanda y geolocalización. Las observaciones corresponden a una captura puntual en el tiempo (`fecha_hora_consulta`), por lo que los precios pueden presentar variaciones en ejecuciones posteriores.
-2. **Dependencia de la Estructura HTML (*DOM Scraping*):**
-   Cambios en las clases CSS o en las etiquetas del maquetado web de las tiendas minoristas pueden afectar la tasa de extracción de los atributos secundarios (`marca_raw` o `presentacion_raw`), requiriendo mantenimiento continuo de las funciones de parseo en `scraper.R`.
-3. **Restricción de Cobertura Geográfica:**
-   Los precios capturados representan la oferta digital nacional o regional de las plataformas web, pudiendo existir discrepancias con los precios de anaquel en tiendas físicas (*offline*) debido a costos logísticos o tarifas territoriales.
+1. **Una sola fecha.** Hay una única corrida (`r cifras$id_corrida`, `r cifras$fecha`). Los precios son los del momento de captura y no permiten ver cambios en el tiempo; conviene repetir el scraping en otras fechas.
+2. **Cobertura parcial.** La recolección depende de los términos de búsqueda, del máximo de páginas y del tope de fichas por comercio; no es un censo del catálogo. El total que muestra cada sitio incluye productos ajenos y no sirve como referencia directa.
+3. **La correspondencia es heurística.** Se basa en marca, variante, contenido y unidades inferidos del nombre. Se corrigieron casos detectados (variantes truncadas como "SIN AZU", packs mixtos y un multipack con contenido total mal interpretado), pero pueden quedar errores no visibles en las diferencias de precio.
+4. **PriceSmart no entra en las comparaciones.** Vende multipacks y formatos mayoristas sin equivalente exacto; sus datos solo describen la oferta.
+5. **Condiciones de compra fuera del análisis.** No se fijó ciudad ni sede; no se incluyen envíos, mínimos de compra ni condiciones de promoción. En Éxito se usa el precio general, no el precio con tarjeta.
+6. **Dependencia de la estructura de los sitios.** Un cambio en el HTML puede romper los selectores; por eso se conservan las copias crudas y el modo sin conexión.
 :::
 
-**Conclusión General del Taller**
+### Conclusión general
 
-El desarrollo del pipeline KDD —desde la extracción automatizada con `scraper.R`, la persistencia relacional transaccional en `comparador_precios.sqlite` mediante tablas de paso (*staging*), la abstracción analítica con las vistas `v_categoria` y `v_comparables`, hasta la visualización interactiva— demuestra ser una herramienta eficaz para dotar de transparencia al mercado minorista. La integración de la ingeniería de características (`precio_por_litro`) permite transformar datos crudos de la web en conocimiento accionable para el consumidor y la investigación de mercados.
-
-
+El flujo completo (scraping reproducible, copias crudas, carga transaccional en SQLite, validación y correspondencia de productos, consultas SQL y gráficos) permite comparar bebidas entre comercios de forma verificable: cada cifra de este informe se puede reproducir con una consulta a la base y cada observación se rastrea hasta su página guardada en `raw/`. El principal hallazgo práctico es que el comercio más barato cambia según el producto y el tamaño, y que la mejor estrategia es elegir por presentación y, cuando el envío lo permita, dividir la compra.
 
 ::::::::::
 
-:::::::::: {#tab-repro .kdd-tab data-title="Entrega" data-icon="check" data-status="pendiente"}
+:::::::::: {#tab-repro .kdd-tab data-title="Entrega" data-icon="check" data-status="progreso"}
 
 ## Reproducibilidad y entregables
 
 ```{r checklist, echo=FALSE, results='asis'}
 existe <- function(f) file.exists(ruta(f)) || dir.exists(ruta(f))
-raw_n <- sapply(c(exito = "exito", carulla = "carulla", pricesmart = "pricesmart"), function(s) length(list.files(ruta(file.path("raw", s)))))
+raw_n <- sapply(c(exito = "exito", carulla = "carulla", pricesmart = "pricesmart", supercomunal = "supercomunal"),
+                function(s) length(list.files(ruta(file.path("raw", s)), recursive = TRUE)))
 checklist(
   check_item(existe("taller_1.Rmd"), "<code>taller_1.Rmd</code>"),
-  check_item(existe("scraper.R"), "<code>scraper.R</code>"),
+  check_item(existe("scraper.R") && existe("config.R"), "<code>scraper.R</code> y <code>config.R</code>"),
+  check_item(existe("run_scraper.R"), "<code>run_scraper.R</code> (punto de entrada)"),
+  check_item(existe("comparables.R") && existe("preparar_taller1.R"), "<code>comparables.R</code> y <code>preparar_taller1.R</code>"),
+  check_item(existe("consultas.sql"), "<code>consultas.sql</code>"),
   check_item(db_existe, "<code>comparador_precios.sqlite</code>"),
-  check_item(sum(raw_n) > 0, "<code>raw/</code> con copias crudas (.html)", paste(names(raw_n), raw_n, collapse = ", ")),
-  check_item(length(list.files(dirname(ruta("scraper.R")), pattern = "^datos_consolidados_.*\\.csv$")) > 0, "CSV consolidado de la ejecución (opcional)", "datos_consolidados_*.csv", warn = TRUE),
+  check_item(existe("comparador_precios_reproc.sqlite"), "<code>comparador_precios_reproc.sqlite</code> (verificación sin conexión)", warn = TRUE),
+  check_item(existe("raw/manifest.csv") && sum(raw_n) > 0, "<code>raw/</code> con copias crudas y manifest", paste(names(raw_n), raw_n, collapse = ", ")),
+  check_item(existe("diagnostico"), "<code>diagnostico/</code> (logs y robots.txt)", warn = TRUE),
+  check_item(existe("df_resultado_final.rds"), "<code>df_resultado_final.rds</code>"),
   check_item(existe("renv.lock"), "<code>renv.lock</code>"),
   check_item(existe("README.md"), "<code>README.md</code>"),
   manual_item("El Pull Request solo modifica mi carpeta individual"),
@@ -949,7 +735,6 @@ sessionInfo()
 ```
 
 ::::::::::
-
 
 ```{r cierre, include=FALSE}
 dbDisconnect(con)

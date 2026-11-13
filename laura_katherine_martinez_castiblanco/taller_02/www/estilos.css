@@ -1,0 +1,27 @@
+/* Estilos del comparador de precios · funcionan en modo claro y oscuro (variables de Bootstrap) */
+:root { --radio: 14px; --acento: #0E8F6B; }
+body { letter-spacing: .005em; }
+.navbar { box-shadow: 0 1px 0 rgba(128,128,128,.25); }
+.navbar-brand { font-weight: 700; letter-spacing: -.01em; }
+.card { border-radius: var(--radio); border: 1px solid rgba(128,128,128,.22); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.card-header { font-weight: 600; background: transparent; border-bottom: 1px solid rgba(128,128,128,.18); }
+.kpi-card { border-radius: var(--radio); }
+.kpi-card .value-box-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi-pie { font-size: .78rem; opacity: .85; margin: 0; }
+.bslib-sidebar-layout > .sidebar { font-size: .92rem; }
+.sidebar-titulo { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; opacity: .65; margin: .75rem 0 .25rem; }
+.leyenda-comercios { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .5rem; }
+.chip { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; padding: .15rem .6rem;
+        border-radius: 999px; border: 1px solid rgba(128,128,128,.3); }
+.chip i { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; }
+.shiny-output-error-validation { color: var(--bs-secondary-color); font-style: italic; padding: 1rem; text-align: center; }
+/* Highcharts hereda el color del tema (claro/oscuro) */
+.highcharts-axis-labels text, .highcharts-legend-item text, .highcharts-title, .highcharts-axis-title,
+.highcharts-data-label text { fill: var(--bs-body-color) !important; color: var(--bs-body-color) !important; }
+.highcharts-tooltip-box { fill: var(--bs-body-bg); fill-opacity: .95; }
+.highcharts-tooltip text { fill: var(--bs-body-color) !important; }
+.log-actualizacion { font-family: var(--bs-font-monospace); font-size: .74rem; max-height: 260px; overflow: auto;
+                     background: rgba(128,128,128,.10); border-radius: 10px; padding: .6rem .8rem; white-space: pre-wrap; }
+.fila-grande { font-weight: 600; }
+table.dataTable td a { text-decoration: none; }
+@media (max-width: 768px) { .kpi-card .value-box-value { font-size: 1.3rem; } }
