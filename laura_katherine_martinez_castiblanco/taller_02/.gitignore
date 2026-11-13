@@ -1,0 +1,29 @@
+# Credenciales y secretos (NUNCA en el repositorio)
+.Renviron
+.Renviron.*
+!.Renviron.example
+.streamlit/secrets.toml
+rsconnect/
+# Entorno y temporales de R
+.Rproj.user/
+.Rhistory
+.RData
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+# Salidas de ejecución que no se entregan
+diagnostico/
+datos/staging/
+*_reproc.sqlite
+*.log
+*.bak
+*.bak_*
+# SQLite en uso y sistema operativo
+*.sqlite-wal
+*.sqlite-shm
+.DS_Store
+Thumbs.db
