@@ -1,4 +1,6 @@
 pandas==2.2.2
+pandera==0.36.0
 plotly==7.1.0
+pytest==9.2.0
 requests==2.31.0
 streamlit==1.38.0
