@@ -1,5 +1,6 @@
 # db.R: acceso a la base SQLite. Sin codigo de interfaz.
 RUTA_BD <- "comparador_precios.sqlite"
+# RUTA_BD <- "prueba_scrape.sqlite"
 
 # Fecha y hora actual en ISO 8601 con zona de Bogota: 2026-11-07T10:30:00-05:00
 ahora_iso <- function() {
