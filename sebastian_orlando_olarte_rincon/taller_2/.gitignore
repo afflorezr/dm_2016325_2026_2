@@ -21,3 +21,11 @@ backups/
 app_anterior.R
 app_visual.R
 app_respaldo_*.R
+
+# Archivos auxiliares no incluidos en la entrega
+Taller2_mejoras_integradas.zip
+app_modulo2_shiny.R
+app_modulo3_cache.R
+app_modulo3_corregida.R
+app_modulo6_canasta.R
+rsconnect/
