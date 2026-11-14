@@ -1,0 +1,3 @@
+* **Coeficiente de publicidad (18.67):** Por cada unidad adicional invertida en publicidad, las ventas aumentan en promedio **18.67 unidades**. Este efecto es positivo y altamente significativo ($p < 0.001$).
+* **Coeficiente $R^2$ (0.7374):** El gasto en publicidad explica el **73.74% de la variabilidad total de las ventas**, lo cual indica un ajuste fuerte.
+* **Conclusión:** **Sí, explica muy bien las ventas.** La publicidad es un predictor potente y determinante, aunque el $\approx 26\%$ restante depende de factores no incluidos en este modelo (como el precio).

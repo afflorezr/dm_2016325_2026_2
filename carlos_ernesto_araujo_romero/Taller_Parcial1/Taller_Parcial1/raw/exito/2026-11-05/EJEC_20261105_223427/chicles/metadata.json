@@ -1,0 +1,50 @@
+{
+  "id_ejecucion": "EJEC_20261105_223427",
+  "id_comercio": "exito",
+  "comercio": "Éxito",
+  "rama": "Chicles",
+  "ruta": "Mercado/Dulces y chocolatería/Chicles",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-05T22:35:28-05:00",
+  "fecha_fin": "2026-11-05T22:35:31-05:00",
+  "n_reportado": 107,
+  "n_paginas": 3,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Chicles?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-05T22:35:29-05:00",
+      "n_reportado": 107,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "dca044dbdbf9b2b6b99ba7c9fb66fd7ceef448c8e77f84366a354affb8ee1561"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Chicles?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-05T22:35:30-05:00",
+      "n_reportado": 107,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "8e098e27eab3f031ff46f46101c676ab26e2e4d8ef99e070234432b5b2f9c740"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Chicles?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-05T22:35:31-05:00",
+      "n_reportado": 107,
+      "n": 7,
+      "status": 200,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "f71f9606f93da7bae68cef7856fda15b4d449738feed6a2a0c98b7ea9306a5c1"
+    }
+  ]
+}
