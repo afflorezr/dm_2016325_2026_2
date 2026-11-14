@@ -1,5 +1,6 @@
 server <- function(input, output, session) {
-  con <- conectar()
+  ruta_bd <- RUTA_BD                       # única fuente de la ruta (se define en db.R)
+  con <- conectar(ruta_bd)
   session$onSessionEnded(function() dbDisconnect(con))
   
   # El orden en server.R es: opc, el observe, texto_d, f, ind, y al final los output.
@@ -97,7 +98,7 @@ server <- function(input, output, session) {
       hc_yAxis(title = list(text = paste("COP por", input$medida))) |>
       hc_xAxis(title = list(text = "Comercio")) |>
       hc_legend(enabled = FALSE)
-  })
+  })|> bindCache(f(), input$medida, version())
   
   output$g_distribucion <- renderHighchart({
     d <- con_filtros(distribucion_precios)
@@ -111,7 +112,7 @@ server <- function(input, output, session) {
                       unname(unlist(d[i, c("minimo", "q1", "mediana", "q3", "maximo")])))) |>
       hc_colors(unname(PALETA_COMERCIOS[as.character(d$comercio)])) |>
       hc_legend(enabled = FALSE)
-  })
+  })|> bindCache(f(), version())
   
   output$tabla <- renderDT({
     p <- con_filtros(filtrar_precios)
@@ -152,7 +153,7 @@ server <- function(input, output, session) {
       hc_yAxis(title = list(text = "% de productos en promoción"), max = 100) |>
       hc_tooltip(pointFormat = "{point.tooltip}") |>
       hc_legend(enabled = FALSE)
-  })
+  })|> bindCache(f(), version())
   
   observe({
     ej <- opc()$ejecuciones
@@ -242,29 +243,6 @@ server <- function(input, output, session) {
   output$aviso_canasta <- renderText(
     paste0(canasta_res()$advertencia, " Precios de la ejecución del ", substr(canasta_res()$ejecucion$fecha, 1, 10), "."))
   
-  resultado_act <- reactiveVal(NULL)
-  
-  observeEvent(input$actualizar, {
-    showNotification("Actualizando...", id = "act", duration = NULL)
-    res <- tryCatch({
-      source("scraper.R", encoding = "UTF-8", local = TRUE)   # se carga solo al pulsar
-      ejecutar_recoleccion(con, "respaldo")
-    }, error = function(e) list(error = conditionMessage(e)))
-    removeNotification("act")
-    resultado_act(res)
-    if (is.null(res$error)) version(version() + 1)
-  })
-  
-  output$msg_act <- renderText({
-    r <- req(resultado_act())
-    if (!is.null(r$error)) paste("No se pudo actualizar:", r$error)
-    else if (sum(r$resumen$nuevas_observaciones) == 0) "Sin datos nuevos: la base ya estaba al día."
-    else paste("Actualización lista:", sum(r$resumen$nuevas_observaciones), "observaciones nuevas.")
-  })
-  output$t_act    <- renderTable({ r <- req(resultado_act()); req(is.null(r$error)); r$res })
-  output$t_act_ej <- renderTable({ r <- req(resultado_act()); req(is.null(r$error)); r$ejecuciones_nuevas })
-  
-  
   ruta_progreso <- tempfile(fileext = ".csv")
   
   tarea <- ExtendedTask$new(function(modo, ruta_progreso, ruta_bd) {
@@ -274,8 +252,8 @@ server <- function(input, output, session) {
     }, seed = NULL)
   }) |> bind_task_button("actualizar")
   
-  observeEvent(input$actualizar,   { unlink(ruta_progreso); tarea$invoke("scrape",   ruta_progreso, RUTA_BD) })
-  observeEvent(input$sin_conexion, { unlink(ruta_progreso); tarea$invoke("respaldo", ruta_progreso, RUTA_BD) })
+  observeEvent(input$actualizar,   { unlink(ruta_progreso); tarea$invoke("scrape",   ruta_progreso, ruta_bd) })
+  observeEvent(input$sin_conexion, { unlink(ruta_progreso); tarea$invoke("respaldo", ruta_progreso, ruta_bd) })
   
   avance <- reactive({ invalidateLater(1000); leer_progreso(ruta_progreso) })
   output$t_avance <- renderTable(avance())
@@ -295,4 +273,3 @@ server <- function(input, output, session) {
   output$t_act    <- renderTable(req(resultado()$resumen))
   output$t_act_ej <- renderTable(req(resultado()$ejecuciones_nuevas))
 }
-

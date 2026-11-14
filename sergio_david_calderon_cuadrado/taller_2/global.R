@@ -1,7 +1,7 @@
 library(shiny); library(bslib); library(DBI); library(RSQLite)
 library(highcharter); library(DT)
 library(promises); library(future)
-
+plan(multisession)
 source("db.R")
 
 # Color fijo por comercio. Los nombres deben ser iguales a comercios.nombre
@@ -14,4 +14,3 @@ formato_cop <- function(x) {
     x, format = "d", big.mark = ".",decimal.mark = ",")))
 }
 
-plan(multisession)
