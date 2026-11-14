@@ -73,8 +73,124 @@ test_that("una corrida nueva suma solo lo nuevo y cuenta los cambios de precio",
   expect_equal(sum(r$resumen$cambios_de_precio), 1)
 })
 
-test_that("modo en linea sin navegador falla con un mensaje claro", {
+# ---- Scraping en linea con comercios SIMULADOS (nunca se abre un navegador ni se consulta un sitio) ----
+ficha_falsa <- function(nombre, filas_fn, falla = FALSE) {
+  list(nombre = nombre,
+       catalogo = list(crema = list(termino = "crema", filtros = list(list(etiqueta = "todo", regla = NULL)))),
+       url_del_filtro = function(cfg, f) "https://prueba.invalid/busqueda",
+       scrapear_pagina = function(url, pausa, ts) {
+         if (falla) stop("bloqueado por el sitio (prueba)")
+         filas_fn(ts)
+       })
+}
+filas_crudas <- function(nm, precios_extra = 0, solo = NULL) {
+  force(nm); force(precios_extra)
+  function(ts) {
+    cat_cm <- catalogo_largo[catalogo_largo$comercio == nm & !(nm == "exito" & catalogo_largo$id_producto == 9), ]
+    if (!is.null(solo)) cat_cm <- cat_cm[solo, ]
+    tibble::tibble(id_ejecucion = ts$id_ejecucion, fecha_consulta = ts$fecha_consulta,
+                   nombres = paste(cat_cm$producto_comparable, "200 ml"), presentacion = "200 ml", marca = "Lubriderm",
+                   precio_cop = format(10000 + 1000 * cat_cm$id_producto + precios_extra, scientific = FALSE, trim = TRUE),
+                   precio_oferta = NA_character_, condicion_promocion = NA_character_,
+                   url = paste0("https://prueba.invalid/", cat_cm$sku), sku = cat_cm$sku, texto_original_anuncio = "tarjeta")
+  }
+}
+fichas_prueba <- function(falla_en = character()) {
+  setNames(lapply(c("exito", "farmatodo", "larebaja"), function(nm)
+    ficha_falsa(nm, filas_crudas(nm), falla = nm %in% falla_en)), c("exito", "farmatodo", "larebaja"))
+}
+correr_en_linea <- function(con, dir_raw, fichas, ...) {
+  suppressMessages(ejecutar_recoleccion(con, "scrape", dir_raw = dir_raw, fichas = fichas, usar_navegador = FALSE, pausa = 0, ...))
+}
+
+test_that("scraping en linea (simulado): registra una ejecucion por comercio y guarda lo recolectado", {
   con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
+  raw <- tempfile("raw"); dir.create(raw)
+  r <- correr_en_linea(con, raw, fichas_prueba())
+  expect_equal(r$modo, "scrape")
+  expect_equal(nrow(r$fallos), 0)
+  expect_equal(nrow(r$ejecuciones_nuevas), 3)
+  expect_true(all(r$ejecuciones_nuevas$estado %in% c("completa", "parcial")))
+  expect_gt(sum(r$resumen$nuevas_observaciones), 0)
+  expect_equal(sum(r$resumen$recolectados), sum(r$resumen$nuevas_observaciones))
+  expect_true(all(file.exists(file.path(raw, paste0("resultado_seguro_", c("exito", "farmatodo", "larebaja"), ".csv")))))
+})
+
+test_that("si un comercio falla, los demas se guardan y el fallo queda registrado con su motivo", {
+  con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
+  raw <- tempfile("raw"); dir.create(raw)
+  r <- correr_en_linea(con, raw, fichas_prueba(falla_en = "farmatodo"))
+  expect_equal(r$fallos$comercio, "farmatodo")
+  expect_match(r$fallos$motivo, "sin producto|ning|bloque")
+  fa <- r$ejecuciones_nuevas[r$ejecuciones_nuevas$comercio == "Farmatodo", ]
+  expect_equal(fa$estado, "fallida")
+  expect_equal(fa$n_registros, 0)
+  expect_gt(r$resumen$nuevas_observaciones[r$resumen$comercio == "\u00c9xito"], 0)
+  expect_gt(r$resumen$nuevas_observaciones[r$resumen$comercio == "La Rebaja"], 0)
+  expect_equal(r$resumen$nuevas_observaciones[r$resumen$comercio == "Farmatodo"], 0)
+  expect_equal(r$resumen$recolectados[r$resumen$comercio == "Farmatodo"], 0)
+})
+
+test_that("una corrida en linea posterior con un precio distinto cuenta el cambio e inserta solo lo nuevo", {
+  con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
+  raw <- tempfile("raw"); dir.create(raw)
+  correr_en_linea(con, raw, fichas_prueba())
+  Sys.sleep(1.1)                                    # el id de ejecucion es la hora (segundos)
+  f2 <- fichas_prueba(); f2$farmatodo <- ficha_falsa("farmatodo", filas_crudas("farmatodo", precios_extra = 500, solo = 1))
+  r <- correr_en_linea(con, raw, f2)
+  expect_equal(r$resumen$cambios_de_precio[r$resumen$comercio == "Farmatodo"], 1)
+  n1 <- cantidad_filas(con, "observaciones")
+  expect_equal(cantidad_filas(con, "ejecuciones"), 6)
+  expect_equal(sum(r$resumen$nuevas_observaciones), n1 - (n1 - sum(r$resumen$nuevas_observaciones)))
+})
+
+test_that("el avance por comercio se escribe en un archivo que la app puede leer", {
+  con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
+  raw <- tempfile("raw"); dir.create(raw); ruta <- tempfile(fileext = ".csv")
+  suppressMessages(ejecutar_recoleccion(con, "scrape", dir_raw = raw, fichas = fichas_prueba(falla_en = "larebaja"),
+                                        usar_navegador = FALSE, pausa = 0, progreso = crear_progreso(ruta)))
+  p <- leer_progreso(ruta)
+  expect_equal(sort(p$comercio), c("exito", "farmatodo", "larebaja"))
+  expect_equal(p$estado[p$comercio == "exito"], "listo")
+  expect_equal(p$estado[p$comercio == "larebaja"], "fallo")
+  expect_null(leer_progreso(tempfile()))
+})
+
+test_that("sin navegador, la actualizacion en linea falla con un mensaje claro (y no scrapea)", {
+  skip_if_not_installed("chromote")
+  con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
+  testthat::local_mocked_bindings(find_chrome = function(...) NULL, .package = "chromote")
+  withr::local_envvar(CHROMOTE_CHROME = "")
   expect_error(ejecutar_recoleccion(con, "scrape"), "modo sin conexi")
+  expect_equal(cantidad_filas(con, "ejecuciones"), 0)
+})
+
+test_that("el modo sin conexion falla claro si no existe la carpeta de respaldos", {
+  con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
   expect_error(ejecutar_recoleccion(con, "respaldo", file.path(tempdir(), "no_existe")), "No existe la carpeta")
+})
+
+test_that("si un comercio revienta por completo (error inesperado), no tumba la corrida", {
+  con <- crear_base_vacia(); on.exit(DBI::dbDisconnect(con))
+  raw <- tempfile("raw"); dir.create(raw)
+  original <- get("ejecutar_busquedas", envir = globalenv())
+  assign("ejecutar_busquedas", function(cm, ...) if (cm$nombre == "larebaja") stop("estructura del sitio cambio (prueba)") else original(cm, ...),
+         envir = globalenv())
+  on.exit(assign("ejecutar_busquedas", original, envir = globalenv()), add = TRUE)
+  r <- correr_en_linea(con, raw, fichas_prueba())
+  expect_equal(r$fallos$comercio, "larebaja")
+  expect_match(r$fallos$motivo, "estructura del sitio")
+  expect_equal(r$ejecuciones_nuevas$estado[r$ejecuciones_nuevas$comercio == "La Rebaja"], "fallida")
+  expect_gt(r$resumen$nuevas_observaciones[r$resumen$comercio == "Éxito"], 0)
+})
+
+test_that("el navegador se lanza con un agente de usuario identificable", {
+  skip_if_not_installed("chromote")
+  withr::local_envvar(TALLER_CONTACTO = "")
+  ua <- agente_usuario()
+  expect_match(ua, "^ComparadorPreciosTaller2/")
+  expect_false(grepl("Chrome|Mozilla", ua))                       # no se hace pasar por un navegador comun
+  expect_true(paste0("--user-agent=", ua) %in% argumentos_navegador())
+  withr::local_envvar(TALLER_CONTACTO = "estudiante@ejemplo.edu")
+  expect_match(agente_usuario(), "contacto: estudiante@ejemplo.edu")
 })

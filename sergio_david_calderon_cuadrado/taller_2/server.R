@@ -3,7 +3,8 @@ server <- function(input, output, session) {
   session$onSessionEnded(function() dbDisconnect(con))
   
   # El orden en server.R es: opc, el observe, texto_d, f, ind, y al final los output.
-  opc <- reactive(opciones_filtros(con))
+  version <- reactiveVal(0)     # sube en 1 cuando hay datos nuevos y obliga a recalcular
+  opc <- reactive({ version(); opciones_filtros(con) })
   
   observe({
     updateSelectizeInput(session, "comercio",
@@ -240,4 +241,58 @@ server <- function(input, output, session) {
   
   output$aviso_canasta <- renderText(
     paste0(canasta_res()$advertencia, " Precios de la ejecución del ", substr(canasta_res()$ejecucion$fecha, 1, 10), "."))
+  
+  resultado_act <- reactiveVal(NULL)
+  
+  observeEvent(input$actualizar, {
+    showNotification("Actualizando...", id = "act", duration = NULL)
+    res <- tryCatch({
+      source("scraper.R", encoding = "UTF-8", local = TRUE)   # se carga solo al pulsar
+      ejecutar_recoleccion(con, "respaldo")
+    }, error = function(e) list(error = conditionMessage(e)))
+    removeNotification("act")
+    resultado_act(res)
+    if (is.null(res$error)) version(version() + 1)
+  })
+  
+  output$msg_act <- renderText({
+    r <- req(resultado_act())
+    if (!is.null(r$error)) paste("No se pudo actualizar:", r$error)
+    else if (sum(r$resumen$nuevas_observaciones) == 0) "Sin datos nuevos: la base ya estaba al día."
+    else paste("Actualización lista:", sum(r$resumen$nuevas_observaciones), "observaciones nuevas.")
+  })
+  output$t_act    <- renderTable({ r <- req(resultado_act()); req(is.null(r$error)); r$res })
+  output$t_act_ej <- renderTable({ r <- req(resultado_act()); req(is.null(r$error)); r$ejecuciones_nuevas })
+  
+  
+  ruta_progreso <- tempfile(fileext = ".csv")
+  
+  tarea <- ExtendedTask$new(function(modo, ruta_progreso, ruta_bd) {
+    future_promise({
+      source("scraper.R", encoding = "UTF-8")
+      ejecutar_recoleccion(modo = modo, ruta_bd = ruta_bd, progreso = crear_progreso(ruta_progreso))
+    }, seed = NULL)
+  }) |> bind_task_button("actualizar")
+  
+  observeEvent(input$actualizar,   { unlink(ruta_progreso); tarea$invoke("scrape",   ruta_progreso, RUTA_BD) })
+  observeEvent(input$sin_conexion, { unlink(ruta_progreso); tarea$invoke("respaldo", ruta_progreso, RUTA_BD) })
+  
+  avance <- reactive({ invalidateLater(1000); leer_progreso(ruta_progreso) })
+  output$t_avance <- renderTable(avance())
+  
+  resultado <- reactive(
+    tryCatch(tarea$result(),
+             error = function(e) if (inherits(e, "shiny.silent.error")) stop(e) else list(error = conditionMessage(e))))
+  
+  observeEvent(tarea$status(), if (tarea$status() == "success") version(version() + 1))
+  
+  output$msg_act <- renderText({
+    r <- resultado()
+    if (!is.null(r$error)) paste("No se pudo actualizar:", r$error)
+    else if (nrow(r$fallos) > 0) paste("Actualización con fallos en:", paste(r$fallos$comercio, collapse = ", "))
+    else paste("Actualización lista:", sum(r$resumen$nuevas_observaciones), "observaciones nuevas.")
+  })
+  output$t_act    <- renderTable(req(resultado()$resumen))
+  output$t_act_ej <- renderTable(req(resultado()$ejecuciones_nuevas))
 }
+

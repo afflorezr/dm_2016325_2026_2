@@ -67,5 +67,13 @@
               selectInput("canasta_ej", "Ejecución", choices = NULL),
               tableOutput("t_canasta"), tableOutput("t_optima"),
               textOutput("res_canasta"), p(class = "text-muted", textOutput("aviso_canasta"))),
+    nav_panel("Actualizar",
+              p(class = "text-muted", "Reprocesa los respaldos de la carpeta raw/. No consulta los sitios en línea."),
+              input_task_button("actualizar", "Actualizar precios (en línea)"),
+              actionButton("sin_conexion", "Modo sin conexión (reprocesa raw/)"),
+              textOutput("msg_act"),
+              tableOutput("t_avance"),
+              tableOutput("t_act"),
+              tableOutput("t_act_ej"),
     nav_panel("Tabla", DTOutput("tabla"))
   )

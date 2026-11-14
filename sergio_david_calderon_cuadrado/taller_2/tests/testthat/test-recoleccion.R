@@ -188,7 +188,7 @@ test_that("las paginas se abren con un agente de usuario identificable, fijado a
   skip_if_not_installed("chromote")
   withr::local_envvar(TALLER_CONTACTO = "")
   ua <- agente_usuario()
-  expect_match(ua, "^ComparadorPreciosTaller2/")
+  expect_equal(ua, "ComparadorPreciosT2")
   expect_false(grepl("Chrome|Mozilla", ua))                       # no se hace pasar por un navegador comun
   eventos <- character()
   sesion_falsa <- list(session = list(
@@ -199,5 +199,5 @@ test_that("las paginas se abren con un agente de usuario identificable, fijado a
   abrir_pagina_live("https://prueba.invalid/x")
   expect_equal(eventos, c("abrir: about:blank", paste("ua:", ua), "ir: https://prueba.invalid/x"))
   withr::local_envvar(TALLER_CONTACTO = "estudiante@ejemplo.edu")
-  expect_match(agente_usuario(), "contacto: estudiante@ejemplo.edu")
+  expect_equal(agente_usuario(), "ComparadorPreciosT2 (contacto: estudiante@ejemplo.edu)")
 })

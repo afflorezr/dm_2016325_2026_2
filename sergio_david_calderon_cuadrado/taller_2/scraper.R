@@ -1395,8 +1395,7 @@ leer_progreso <- function(ruta) {
 # Agente de usuario identificable (buenas practicas de scraping). Contacto opcional: variable de entorno TALLER_CONTACTO.
 agente_usuario <- function() {
   contacto <- Sys.getenv("TALLER_CONTACTO", unset = "")
-  paste0("ComparadorPreciosTaller2/1.0 (trabajo academico de Mineria de Datos",
-         if (nzchar(contacto)) paste0("; contacto: ", contacto), ")")
+  paste0("ComparadorPreciosT2", if (nzchar(contacto)) paste0(" (contacto: ", contacto, ")"))
 }
 
 # [Taller 2] rvest::read_html_live() fija por su cuenta un agente de usuario de Chrome (y pisa cualquier opcion del navegador).
