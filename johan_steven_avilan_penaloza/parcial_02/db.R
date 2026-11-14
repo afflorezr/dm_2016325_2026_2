@@ -193,6 +193,7 @@ indicadores <- function(con, f = list()) {
   aho <- DBI::dbGetQuery(con, "
     SELECT producto, MAX(precio) - MIN(precio) AS ahorro, fecha
     FROM v_comparables WHERE fecha = (SELECT fecha FROM v_referencia)
+      AND disponible = 1
     GROUP BY id_comparable, producto, fecha
     ORDER BY ahorro DESC LIMIT 1")
 
@@ -223,6 +224,7 @@ precio_unitario_comparables <- function(con, unidad, fecha = NULL) {
     FROM v_comparables
     WHERE fecha = COALESCE(?, (SELECT fecha FROM v_referencia))
       AND unidad_normalizada = ?
+      AND disponible = 1
     ORDER BY id_comparable, comercio",
     params = list(fecha %||% NA_character_, as.character(unidad)))
 }
