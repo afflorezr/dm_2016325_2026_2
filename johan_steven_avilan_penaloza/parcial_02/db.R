@@ -284,10 +284,15 @@ cambios_entre <- function(con, fecha_ant, fecha_act, comercios = NULL) {
     JOIN comercios c ON c.id_comercio = a.id_comercio
     LEFT JOIN act ON act.id_anuncio = ids.id_anuncio
     LEFT JOIN ant ON ant.id_anuncio = ids.id_anuncio
-    WHERE a.incluido = 1", filtro_c, "
+    WHERE a.incluido = 1
+      AND a.id_comercio IN (SELECT id_comercio FROM ejecuciones
+                            WHERE estado = 'completa' AND SUBSTR(fecha_hora_inicio, 1, 10) = ?)
+      AND a.id_comercio IN (SELECT id_comercio FROM ejecuciones
+                            WHERE estado = 'completa' AND SUBSTR(fecha_hora_inicio, 1, 10) = ?)", filtro_c, "
     ORDER BY c.nombre, a.nombre_original")
   d <- DBI::dbGetQuery(con, sql,
-                       params = c(list(as.character(fecha_act), as.character(fecha_ant)),
+                       params = c(list(as.character(fecha_act), as.character(fecha_ant),
+                                       as.character(fecha_act), as.character(fecha_ant)),
                                   as.list(comercios)))
   clasificar_cambios(d)
 }

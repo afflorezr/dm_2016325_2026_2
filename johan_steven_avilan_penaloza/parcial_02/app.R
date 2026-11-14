@@ -150,7 +150,7 @@ ui <- page_navbar(
       uiOutput("cambios_cajas"),
       card(card_header("Cambios por producto (mismo anuncio, mismo comercio)"),
            DTOutput("tabla_cambios"),
-           card_footer("Precios en COP. Una variación mayor al umbral se resalta: verde si bajó, rojo si subió. Parte de los cambios puede deberse a campañas temporales de descuento."))
+           card_footer("Precios en COP. Solo se comparan los comercios con ejecución completa en ambas capturas. Una variación mayor al umbral se resalta: verde si bajó, rojo si subió. Parte de los cambios puede deberse a campañas temporales de descuento."))
     )
   ),
 

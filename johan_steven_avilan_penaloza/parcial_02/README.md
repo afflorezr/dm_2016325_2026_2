@@ -1,126 +1,137 @@
-# Taller 1 — Comparador de precios: Primeros auxilios y curación
+# Taller 2 — Comparador de precios: Primeros auxilios y curación
 
 **Autor:** Johan Steven Avilan Peñaloza  
-**Curso:** Minería de Datos  
-**Lenguaje elegido:** R (extracción, limpieza, carga en SQLite, consultas y gráficos)  
+**Curso:** Minería de Datos (2016325)  
+**Lenguaje:** R (Shiny). Todo el proceso —scraping, acceso a datos, aplicación y pruebas— está en R.
 
----
+## Aplicación publicada
 
-## Qué hace este proyecto
+**https://1bat7z-johan-avilan.shinyapps.io/comparador-precios/**
 
-Extrae productos de la categoría *Primeros auxilios y curación* (gasas, vendas, apósitos, curitas, esparadrapos, antisépticos para heridas y kits de curación) de tres comercios en línea de Colombia, los almacena en una base de datos SQLite y compara el precio de ocho productos comunes a los tres comercios.
+La aplicación está en shinyapps.io. Dos advertencias sobre el entorno publicado:
 
-| Comercio | Sección consultada | Técnica de extracción |
-|---|---|---|
-| **Farmatodo** | `/categorias/salud-y-medicamentos/botiquin-y-primeros-auxilios` (subcategorías: curitas/algodones/adhesivos, antisépticos, vendas, compresas) | Chrome automatizado con `rvest::read_html_live()` (interacción con botón "Cargar más") |
-| **La Rebaja** | `/drogueria/cuidado-de-la-herida` | Servicio API JSON de VTEX (`/api/catalog_system/pub/products/search`) |
-| **Locatel** | `/drogueria/cuidado-heridas` | Servicio API JSON de VTEX (`/api/catalog_system/pub/products/search`) |
+- Las plataformas gratuitas **no conservan los cambios en la base** al reiniciarse la aplicación.
+- Los comercios suelen **bloquear los servidores de despliegue**, y Farmatodo requiere un navegador automatizado (Chrome) que el servidor no tiene. Por eso la actualización en línea **funciona al ejecutar la aplicación localmente**; en el servidor la aplicación lo informa con un aviso y ofrece el **modo sin conexión**, que reprocesa las copias de `raw/`.
 
+## Qué hace
 
-## Estructura de archivos
+Convierte el comparador del Taller 1 en una aplicación web que consulta la base SQLite, la actualiza mediante el scraper del Taller 1 y orienta al consumidor sobre dónde comprar un producto o una canasta en Farmatodo, La Rebaja y Locatel.
 
-```text
-parcial_01/
-├── taller_1.qmd                # Informe reproducible (Quarto)
-├── taller_1.html               # Informe renderizado interactivo
-├── scraper.R                   # Módulo de extracción, limpieza, SQLite y correspondencia
-├── comparables.csv             # Correspondencia de los 8 productos (generada por código)
-├── comparador_precios.sqlite   # Base de datos SQLite consolidadora
-├── raw/                        # Copias crudas por comercio y fecha de captura
-│   ├── farmatodo/AAAA-MM-DD/*.html.gz
-│   ├── la_rebaja/AAAA-MM-DD/pag_*.json(.gz)
-│   └── locatel/AAAA-MM-DD/pag_*.json(.gz)
-├── prueba_colab.ipynb          # Cuaderno para validación en Google Colab
-├── renv.lock                   # Archivo de congelamiento de dependencias
-└── README.md                   # Documentación del proyecto
-```
+- **Resumen:** filtros combinables (comercio, subcategoría, marca, rango de precio, captura, solo promociones, solo comparables, búsqueda por palabras), seis indicadores calculados con SQL, cuatro gráficos interactivos (highcharter) y una tabla con descarga en CSV.
+- **Cambios de precio:** compara dos capturas (por defecto las dos más recientes) con un umbral ajustable. Muestra productos que subieron, bajaron, nuevos y que dejaron de observarse.
+- **Canasta:** costo de la canasta en cada comercio (solo si tiene todos los productos), costo mínimo comprando cada producto donde es más barato y ahorro frente a comprar todo en un solo comercio. No incluye envío, mínimos de compra ni condiciones de las promociones.
+- **Actualización:** botón que ejecuta el scraper en segundo plano (`ExtendedTask`), valida e inserta por comercio con transacciones, tolera fallas y muestra un resumen por comercio. Modo sin conexión sobre `raw/`.
 
----
+## Cómo ejecutarla localmente
 
----
+Requiere R 4.1 o superior y, solo para la captura en línea de Farmatodo, Google Chrome.
 
-## Prerrequisitos e instalación
-
-1. **Entorno R:** requiere R v4.1 o superior.
-3. **Navegador web:** Google Chrome, requerido únicamente para la captura en vivo de Farmatodo mediante `chromote`.
-
----
-
-## Cómo descargar y cargar la carpeta del parcial
-
-[Haz clic aquí para descargar la carpeta del parcial](https://download-directory.github.io/?url=https://github.com/JohanAv1018/dm_2016325_2026_2/tree/main/johan_steven_avilan_penaloza/parcial_01).
-
-Una vez descargado el archivo `.zip`:
-
-1. Descomprime la carpeta en tu equipo.
-2. Abre **RStudio**.
-3. En el menú superior, selecciona **Session → Set Working Directory → Choose Directory...**.
-4. Busca y selecciona la carpeta `parcial_01` que descomprimiste.
-5. Haz clic en **Open**.
-
-## Preparación del entorno (Instalar paquetes)
-
-1. En el panel **Files** de RStudio, busca el archivo `taller_1.qmd` y ábrelo.
-2. En la pestaña **Console** (abajo a la izquierda), ejecuta:
+1. Descomprima la carpeta `parcial_02` y ábrala como directorio de trabajo en RStudio (**Session → Set Working Directory → Choose Directory...**).
+2. Restaure las dependencias con versiones fijas. Si `renv` indica que el proyecto no está activado, elija la opción 1 (*Activate the project and use the project library*):
 
    ```r
    renv::restore()
    ```
 
-3. Si aparece el mensaje indicando que el proyecto aún no ha sido activado (*"It looks like you've called renv::restore() in a project that hasn't been activated yet"*), selecciona la opción **1: Activate the project and use the project library**. Para ello, escribe `1` en la consola y presiona **Enter**.
+3. Inicie la aplicación:
 
-4. Si `renv` solicita confirmación para instalar los paquetes, acepta y espera a que termine el proceso.
+   ```r
+   shiny::runApp()
+   ```
 
-5. Una vez finalizada la instalación, puedes continuar con las instrucciones de ejecución del proyecto.
+## Cómo correr las pruebas
 
-**Nota:** la primera instalación puede tardar varios minutos, ya que se deben descargar e instalar las dependencias registradas en `renv.lock`. Se recomienda tener conexión a internet durante este paso.
-## Instrucciones de ejecución
+Desde la carpeta `parcial_02/`, con un solo comando en la terminal:
 
-Este proyecto permite trabajar de dos formas desde **RStudio**:
-
-- **Modo Offline (predeterminado):** no requiere conexión a internet ni Google Chrome. Procesa y analiza los datos crudos previamente descargados en la carpeta `raw/`.
-- **Modo Online:** se conecta a los tres comercios, realiza el scraping en vivo, guarda copias de los datos en `raw/` y actualiza la base de datos SQLite.
-
-### Opción 1: Modo Offline (Ver informe rápido)
-
-1. Abre el archivo `taller_1.qmd` en RStudio.
-2. Haz clic en el botón **Render**, ubicado en la barra superior del editor.
-3. Se reconstruirá la base de datos a partir de los archivos de `raw/`, si no existe, y se generará el informe `taller_1.html`.
-
-### Opción 2: Modo Online (Recolección de datos en vivo)
-
-#### Paso A. Descargar datos actualizados
-
-En la consola de RStudio, ejecuta:
-
-```r
-source("scraper.R")
-ejecutar_recoleccion_completa(".", modo = "online")
+```
+Rscript -e "testthat::test_dir('tests')"
 ```
 
-Espera a que termine la recolección de datos de los tres comercios. Los archivos capturados se guardarán en `raw/` y las nuevas observaciones se incorporarán a la base de datos SQLite.
+o, dentro de R: `testthat::test_dir("tests")`. Las pruebas usan datos pequeños y una base temporal; nunca la base de la entrega ni los sitios. Hay 16 pruebas (51 verificaciones) que cubren, entre otras, la conversión de precios a número, la normalización de unidades, el ahorro con empates, que insertar dos veces la misma ejecución no duplica observaciones, la detección de cambios de precio y que la canasta no se calcula cuando falta un producto.
 
-#### Paso B. Generar el informe con los nuevos datos
+## Estructura de archivos
 
-1. Abre `taller_1.qmd` en RStudio.
-2. Haz clic en **Render** para generar el informe `taller_1.html` con los datos actualizados.
+```text
+parcial_02/
+├── app.R                       # Interfaz Shiny (bslib). No contiene SQL
+├── db.R                        # Capa de acceso a datos: consultas parametrizadas, canasta, cambios
+├── scraper.R                   # Extracción (Taller 1), validación previa, transacciones, resumen por comercio
+├── validacion.R                # Reglas de validación antes de insertar
+├── esquema.R                   # Migración del esquema: contenido normalizado, índices y vistas
+├── comparador_precios.sqlite   # Base de datos
+├── diccionario_datos.md        # Tablas, vistas y columnas
+├── comparables.csv             # Correspondencia de los 8 productos (auditoría, Taller 1)
+├── raw/                        # Copias crudas por comercio y captura
+├── tests/                      # Pruebas testthat
+├── renv.lock                   # Dependencias con versiones fijas
+└── README.md
+```
 
-**Nota:** la recolección Online y la generación del informe son pasos independientes. Para consultar los datos ya almacenados sin realizar nuevas peticiones web, utiliza el modo Offline.
+## Origen de los datos y trazabilidad
 
-## Decisiones de diseño y arquitectura
+Todos los datos provienen del código de web scraping (`scraper.R`) ejecutado sobre los sitios de los comercios: Farmatodo con Chrome automatizado (`rvest::read_html_live`) y La Rebaja y Locatel con el servicio JSON de VTEX que usan sus propias páginas. Cada observación se rastrea hasta su copia cruda mediante `ejecuciones.ruta_raw` y su ejecución en la tabla `ejecuciones`. Un dato ausente queda `NULL`; no se digita, copia ni calcula ningún precio.
 
-- **Estandarización limpia:** la marca (`anuncios.marca`), el nombre (`nombre_estandar`), la subcategoría y las unidades de medida se limpian en campos dedicados. El texto original capturado se conserva intacto en columnas adyacentes.
-- **Manejo de productos agotados:** los artículos sin stock conservan su registro, pero asignando `precio = NULL` (nunca cero) para evitar sesgar las métricas de precio.
-- **Filtros de exclusión:** reglas explícitas descartan artículos fuera de alcance (guantes, tapabocas, jeringas, ostomías, etc.), registrando la razón en `anuncios.motivo_exclusion`.
-- **Mapeo de comparables:** la vinculación de los ocho productos representativos utiliza el código de barras (EAN) para las tiendas VTEX (La Rebaja y Locatel) y expresiones regulares sobre el nombre comercial para Farmatodo.
-- **Identificación única:** un producto es único por `(comercio, SKU)`, mientras que una observación es única por `(anuncio, fecha_captura)`.
+| Ejecución | Estado | Registros |
+|---|---|---|
+| `farmatodo_2026-10-10`, `larebaja_2026-10-10`, `locatel_2026-10-10` | completa | 161 / 168 / 375 |
+| `farmatodo_2026-11-09`, `larebaja_2026-11-09`, `locatel_2026-11-09` | completa | 159 / 162 / 377 |
+| `farmatodo_2026-11-12_113552` | **parcial** (no se capturó la subcategoría *curitas, algodones, adhesivos y botiquín*) | 80 |
+| `larebaja_2026-11-12_113552`, `locatel_2026-11-12_113552` | completa | 161 / 377 |
 
-## Consultas y análisis de datos
+Hay dos ejecuciones completas en los tres comercios, en fechas distintas (10 de octubre y 9 de noviembre de 2026), cada una con los ocho productos comparables en los tres comercios. **Las ejecuciones parciales o fallidas quedan registradas, pero no se usan para el estado actual ni para comparar precios.**
 
-Las analíticas incluidas en el informe combinan sentencias SQL avanzadas (`INNER/LEFT JOIN`, subconsultas, `WITH` / CTEs encadenadas y funciones de ventana como `RANK() OVER` y `LAG`), ejecutadas sobre la base de datos SQLite mediante `DBI::dbGetQuery()`.
+## Validación y correcciones
 
-## Cumplimiento ético y límites
+Antes de insertar, `validacion.R` comprueba: comercio, SKU, nombre, URL y fecha-hora presentes; precio numérico y mayor que cero (un precio ausente solo se acepta si el sitio marca el producto como agotado); y ausencia de duplicados en la ejecución. Lo que no supera la validación no se inserta y queda en la tabla `rechazadas` con su motivo. La presencia de los ocho comparables en cada comercio se verifica por ejecución; si falta alguno, la ejecución queda `parcial`.
 
-- **Frecuencia de peticiones:** pausas programadas entre peticiones HTTP (1 segundo en las API de VTEX y varios segundos durante la interacción con el DOM de Farmatodo).
-- **Identificación de cliente:** reintentos limitados y uso de un *User-Agent* académico explícito.
-- **Revisión de `robots.txt`:** se verificaron las políticas de scraping de los tres comercios, confirmando el acceso permitido a las rutas públicas de consulta.
+La tabla `correcciones` registra los cambios sobre lo ya entregado, sin modificar en silencio el Taller 1: restitución de la hora de captura de las tres ejecuciones del 10 de octubre, el campo `modo` de las seis ejecuciones históricas, y la corrección del informe del Taller 1, que mencionaba ejecuciones del 7 y 9 de octubre que no existen (solo hay datos del 10 de octubre).
+
+## Vistas SQL
+
+| Vista | Uso |
+|---|---|
+| `v_ultimo_precio` | Estado actual: cada anuncio con su observación de la última ejecución completa de su comercio. Alimenta filtros, indicadores, gráficos y tabla. |
+| `v_cambios_precio` | Compara las dos últimas ejecuciones completas de cada comercio (mismo anuncio, mismo comercio): subió, bajó, igual, nuevo, no observado. |
+| `v_comparables` | Los ocho productos comparables con precio y precio por unidad normalizada. Alimenta evolución, precio por unidad y canasta. |
+| `v_disponibilidad` | Disponible, agotado según el sitio o no observado, en la última ejecución completa. |
+| `v_precios` | Histórico de observaciones; permite filtrar por captura. |
+| `v_ejecuciones_orden`, `v_referencia` | Auxiliares: orden de las ejecuciones por comercio y fecha de referencia. |
+
+El detalle de cada tabla, vista y columna está en `diccionario_datos.md`.
+
+## Gráfico de libre elección
+
+**¿En qué comercio es más probable encontrar el producto disponible?** Un precio bajo no sirve si el producto está agotado. El gráfico apila, por comercio, los anuncios disponibles, agotados según el sitio y no observados en la última ejecución completa.
+
+## Hallazgos
+
+Los hallazgos usan los precios publicados en los sitios al momento de cada captura y pueden verificarse en la aplicación.
+
+1. **Farmatodo fue el más barato en los ocho productos comparables.** Periodo: captura del 9 de noviembre de 2026 (`farmatodo_2026-11-09`, `larebaja_2026-11-09`, `locatel_2026-11-09`). Comprar una unidad de cada uno cuesta COP 115.600 en Farmatodo, 142.000 en Locatel y 150.700 en La Rebaja: Farmatodo es 18,6 % más barato que Locatel y 23,3 % que La Rebaja. Como Farmatodo es el más barato en cada producto, repartir la compra entre comercios no ahorra nada frente a comprarla toda allí (antes de envío). *Verificación:* pestaña **Canasta**, los ocho productos, captura 2026-11-09.
+2. **La mayor diferencia entre comercios está en las cintas de fijación y las curas Cure Band.** Misma captura. La cinta Fixo Roll Cure Band 10 cm × 2 m cuesta COP 33.560 en Farmatodo y 44.300 en La Rebaja (COP 10.740, 24,2 %; COP 16.780 contra 22.150 por metro). En porcentaje, la mayor brecha es la caja de curas Cure Band Standard × 10: COP 1.960 contra 3.500 (44,0 %). *Verificación:* **Resumen**, indicador «Ahorro máximo entre comercios» y gráfico de precio por unidad.
+3. **La Rebaja tiene muchos más productos agotados.** Periodo: última ejecución completa de cada comercio (`larebaja_2026-11-12_113552`, `locatel_2026-11-12_113552` y `farmatodo_2026-11-09`). En La Rebaja 60 de 160 productos observados figuran agotados (37,5 %), en Locatel 19 de 304 (6,3 %) y en Farmatodo ninguno, aunque este sitio solo indica agotado cuando no publica precio y puede estar ocultando esos productos. *Verificación:* gráfico de disponibilidad en **Resumen**.
+4. **Locatel bajó precios entre el 9 y el 12 de noviembre.** 131 de 304 productos bajaron y ninguno subió (`locatel_2026-11-09` frente a `locatel_2026-11-12_113552`). En Farmatodo, entre el 10 de octubre y el 9 de noviembre, 44 productos subieron y 2 bajaron. Parte de estos cambios puede deberse a campañas temporales de descuento y no al precio regular. *Verificación:* pestaña **Cambios de precio**, desmarcando los comercios que no interesen.
+
+## Limitaciones
+
+- Los precios son los del momento de cada captura y cambian con frecuencia; solo hay tres fechas, insuficientes para hablar de tendencias.
+- La captura del 12 de noviembre de Farmatodo es parcial, por lo que la fecha de referencia de los comparables es el 9 de noviembre.
+- Solo se comparan ocho productos idénticos en los tres comercios, seis de ellos de dos marcas (Cure Band y Nexcare). Las conclusiones valen para esos productos.
+- Seis comparables son cintas vendidas por metros; se usa `m` como unidad normalizada, además de `mL` y `unidad`.
+- Farmatodo no publica código de barras ni declara el total de productos; la equivalencia con los otros comercios se basa en marca, producto y medida del nombre.
+- Los sitios se consultaron desde Bogotá; los precios pueden variar según la ciudad y entre el canal en línea y las tiendas físicas.
+- Los resultados de la canasta no incluyen envío, mínimos de compra ni condiciones de las promociones.
+- El indicador «Cambios de precio» agrega los cambios de la última comparación de cada comercio, que no cubren el mismo periodo (ver `v_cambios_precio`).
+
+## Seguridad y buenas prácticas
+
+- No hay credenciales en el repositorio; `.gitignore` excluye `.Renviron`, `rsconnect/` y archivos de sesión. El token de shinyapps.io se configuró en la consola con `rsconnect::setAccountInfo()`.
+- Todas las consultas con valores del usuario son parametrizadas; los campos de texto se limpian (longitud máxima y caracteres permitidos) antes de usarse.
+- El scraping respeta pausas entre peticiones, un agente de usuario identificable y un máximo de peticiones por ejecución.
+- Rutas relativas; no se usa `setwd()` dentro del código.
+
+## Declaración de uso de inteligencia artificial
+
+Usé **Claude (Anthropic)** como asistente de programación durante todo el taller: para planear el trabajo por módulos, escribir y refactorizar el código R (scraper con ids únicos, validación y transacciones; migración del esquema con índices y vistas; capa de acceso `db.R`; aplicación Shiny con botón de actualización en segundo plano; pruebas `testthat`) y para redactar el diccionario de datos y este README.
+
+Verifiqué el resultado ejecutando todo localmente: reproceso de `raw/` en modo sin conexión (sin duplicar observaciones), captura en línea, consulta de las vistas desde la consola, las 51 verificaciones de las pruebas automáticas, la aplicación en local y la aplicación publicada. Los errores que aparecieron al ejecutar (copia anidada de carpetas, sesión de R con una versión antigua del esquema, captura parcial de Farmatodo) los diagnostiqué y corregí. Soy responsable de todo el código entregado y puedo explicarlo.
