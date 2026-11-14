@@ -1,0 +1,23 @@
+# Credenciales y secretos
+.Renviron
+.Renviron.*
+.env
+.env.*
+# Archivos locales de RStudio
+.Rhistory
+.RData
+.Rproj.user/
+# Entornos y paquetes
+renv/library/
+renv/staging/
+# Copias de seguridad
+backups/
+*respaldo*.sqlite
+# Archivos temporales SQLite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+# Versiones anteriores de la aplicacion
+app_anterior.R
+app_visual.R
+app_respaldo_*.R
