@@ -53,28 +53,308 @@ idioma_dt <- list(search = "Buscar:", lengthMenu = "Mostrar _MENU_ filas",
                   emptyTable = "Sin datos",
                   paginate = list(previous = "Anterior", `next` = "Siguiente"))
 
-caja <- function(titulo, id) {
-  value_box(title = titulo,
-            value = textOutput(id),
+# ---- Identidad visual -----------------------------------------------------
+# Paleta de baja saturación: conserva la distinción entre comercios, pero
+# evita colores demasiado intensos en filtros, gráficos y tablas.
+
+mezclar_blanco <- function(hex, proporcion = 0.30) {
+  rgb <- grDevices::col2rgb(hex)
+  rgb_suave <- rgb + (255 - rgb) * proporcion
+  grDevices::rgb(rgb_suave[1, ] / 255, rgb_suave[2, ] / 255,
+                 rgb_suave[3, ] / 255)
+}
+
+# Suaviza los colores definidos en db.R sin cambiar los nombres.
+COLORES_COMERCIO <- vapply(
+  COLORES_COMERCIO, mezclar_blanco, character(1), proporcion = 0.22
+)
+
+chip_comercio <- function(x) {
+  col <- unname(COLORES_COMERCIO[as.character(x)])
+  ifelse(is.na(col), esc(x),
+         sprintf('<span class="punto-comercio" style="background:%s"></span>%s', col, esc(x)))
+}
+
+tema_app <- bs_theme(
+  version = 5,
+  preset = "flatly",
+  primary = "#5F8195",
+  secondary = "#A98270",
+  success = "#718B7D",
+  info = "#7896A5",
+  warning = "#B18D68",
+  danger = "#B27C72",
+  bg = "#F6F8F9",
+  fg = "#35434B",
+  base_font = font_collection("Segoe UI", "system-ui", "Roboto", "Helvetica Neue", "Arial", "sans-serif"),
+  "font-size-base" = "0.94rem"
+) |>
+  bs_add_rules("
+    :root {
+      --app-bg: #f6f8f9;
+      --app-surface: #ffffff;
+      --app-ink: #35434b;
+      --app-muted: #687780;
+      --app-border: #e1e7ea;
+      --app-accent: #5f8195;
+      --app-warm: #b58c78;
+      --app-blue-soft: #edf3f6;
+      --app-warm-soft: #f5eeea;
+    }
+
+    body {
+      background: var(--app-bg);
+      color: var(--app-ink);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Barra superior clara, con texto azul grisáceo */
+    .navbar {
+      background: #e8eff3;
+      border-bottom: 1px solid #d9e3e8;
+      box-shadow: 0 2px 8px rgba(48, 68, 80, .045);
+    }
+
+    .navbar-brand {
+      color: #3f6073 !important;
+      font-weight: 650;
+      letter-spacing: -.015em;
+    }
+
+    .navbar .navbar-text {
+      color: #607581 !important;
+      opacity: 1 !important;
+      font-weight: 500;
+      font-size: .78rem;
+      text-shadow: none;
+    }
+
+    .navbar .navbar-text span { color: inherit !important; }
+
+    .navbar .nav-link {
+      color: #526d7c !important;
+      font-weight: 550;
+      border-radius: 7px;
+      margin: 0 2px;
+    }
+
+    .navbar .nav-link:hover {
+      color: #36576b !important;
+      background: rgba(95, 129, 149, .09);
+    }
+
+    .navbar .nav-link.active {
+      color: #36576b !important;
+      background: #dce7ed;
+      box-shadow: inset 0 -2px 0 #7896a5;
+    }
+
+    .container-fluid { max-width: 1680px; }
+
+    .sidebar {
+      background: #f0f4f6;
+      border-right: 1px solid #e1e8ec;
+    }
+
+    .sidebar h2, .sidebar h3, .sidebar h4 {
+      color: #4e7185;
+      font-weight: 650;
+    }
+
+    .form-label, .control-label {
+      color: #566873;
+      font-weight: 550;
+      font-size: .88rem;
+    }
+
+    .form-control, .form-select, .selectize-input {
+      border-color: #d9e2e7;
+      border-radius: 7px;
+      box-shadow: none;
+      background-color: #fff;
+    }
+
+    .form-control:focus, .form-select:focus, .selectize-input.focus {
+      border-color: #91adbd;
+      box-shadow: 0 0 0 .15rem rgba(95, 129, 149, .13);
+    }
+
+    .card {
+      background: var(--app-surface);
+      border: 1px solid var(--app-border);
+      border-radius: 11px;
+      box-shadow: 0 2px 8px rgba(48, 68, 80, .035);
+      overflow: hidden;
+    }
+
+    .card-header {
+      background: #f0f4f6;
+      color: #4e6d7f;
+      font-weight: 650;
+      border-bottom: 1px solid #e4eaed;
+      padding: 13px 16px;
+    }
+
+    .card-body { padding: 16px; }
+
+    .card-footer {
+      background: #faf7f5;
+      border-top: 1px solid #eee7e2;
+      color: var(--app-muted);
+      font-size: .78rem;
+      padding: 10px 16px;
+    }
+
+    .bslib-value-box {
+      background: #fff !important;
+      color: #35434b !important;
+      border: 1px solid #e1e7ea;
+      border-top: 2px solid #91aab8;
+      border-radius: 11px;
+      box-shadow: 0 2px 7px rgba(48, 68, 80, .03);
+    }
+
+    .bslib-value-box .value-box-title {
+      color: #687780 !important;
+      font-size: .78rem;
+      font-weight: 550;
+    }
+
+    .bslib-value-box .value-box-value {
+      color: #4e7185 !important;
+      font-weight: 650;
+      letter-spacing: -.02em;
+    }
+
+    .bslib-value-box .value-box-showcase,
+    .bslib-value-box .value-box-showcase * {
+      color: #b58c78 !important;
+    }
+
+    .btn-primary {
+      background: #5f8195;
+      border-color: #5f8195;
+      color: #fff;
+    }
+
+    .btn-primary:hover, .btn-primary:focus {
+      background: #4f7185;
+      border-color: #4f7185;
+    }
+
+    .btn-outline-primary {
+      color: #52758a;
+      border-color: #a9bdc8;
+    }
+
+    .btn-outline-primary:hover {
+      color: #fff;
+      background: #5f8195;
+      border-color: #5f8195;
+    }
+
+    .text-muted, .small { color: var(--app-muted) !important; }
+
+    table.dataTable {
+      border-collapse: separate !important;
+      border-spacing: 0;
+    }
+
+    table.dataTable thead th {
+      background: #edf3f6;
+      color: #4e6d7f;
+      font-weight: 600;
+      border-bottom: 1px solid #dce5e9 !important;
+    }
+
+    table.dataTable tbody tr:hover { background: #f5f8f9; }
+
+    .dataTables_wrapper {
+      color: #5d6d75;
+      font-size: .86rem;
+    }
+
+    .page-intro { padding: 8px 2px 16px; }
+
+    .page-intro h2 {
+      color: #4e7185;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -.02em;
+      margin-bottom: 5px;
+    }
+
+    .page-intro p {
+      color: var(--app-muted);
+      margin-bottom: 0;
+    }
+
+    .section-heading {
+      color: #52758a;
+      font-size: 1rem;
+      font-weight: 650;
+      margin: 20px 0 11px;
+    }
+
+    .punto-comercio {
+      display: inline-block;
+      width: .68em;
+      height: .68em;
+      border-radius: 50%;
+      margin-right: .45em;
+      vertical-align: .02em;
+    }
+
+    .irs--shiny .irs-bar,
+    .irs--shiny .irs-from,
+    .irs--shiny .irs-to,
+    .irs--shiny .irs-single {
+      background: #5f8195;
+      border-color: #5f8195;
+    }
+
+    .irs--shiny .irs-handle { border-color: #5f8195; }
+
+    @media (max-width: 768px) {
+      .card-body { padding: 12px; }
+      .page-intro h2 { font-size: 1.18rem; }
+    }
+  ")
+
+# Gráficos: fondo transparente, tipografía de la página, formato numérico y fechas en español
+hcopts <- getOption("highcharter.lang")
+hcopts$thousandsSep <- "."
+hcopts$decimalPoint <- ","
+hcopts$months      <- c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                        "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+hcopts$shortMonths <- c("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+hcopts$weekdays    <- c("domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado")
+options(highcharter.lang = hcopts)
+options(highcharter.theme = hc_theme_smpl(
+  chart = list(backgroundColor = "transparent", style = list(fontFamily = "inherit"))))
+
+caja <- function(titulo, id, tema = "primary") {
+  value_box(title = titulo, value = textOutput(id), theme = tema,
             p(textOutput(paste0(id, "_nota"), inline = TRUE), class = "small mb-0"))
 }
 
 # ---- Interfaz ------------------------------------------------------------
 
 ui <- page_navbar(
-  title = "Comparador de precios · Primeros auxilios y curación",
-  theme = bs_theme(version = 5, preset = "flatly"),
+  title = "Comparador de precios de primeros auxilios y curación",
+  theme = tema_app,
   lang  = "es",
   fillable = FALSE,
-
+  
   nav_panel(
     "Resumen",
     layout_sidebar(
       fillable = FALSE,
       sidebar = sidebar(
         title = "Filtros", width = 320,
-        checkboxGroupInput("comercio", "Comercio", choices = opc$comercios,
-                           selected = opc$comercios),
+        checkboxGroupInput("comercio", "Comercio",
+                           choiceNames = lapply(opc$comercios, function(x) HTML(chip_comercio(x))),
+                           choiceValues = opc$comercios, selected = opc$comercios),
         selectizeInput("subcategoria", "Subcategoría", choices = opc$subcategorias,
                        multiple = TRUE, options = list(placeholder = "Todas")),
         selectizeInput("marca", "Marca", choices = opc$marcas, multiple = TRUE,
@@ -89,17 +369,17 @@ ui <- page_navbar(
         textInput("busqueda", "Buscar por palabras en el nombre del anuncio",
                   placeholder = "ej. micropore 24 mm")
       ),
-
+      
       layout_column_wrap(
         width = "240px",
         caja("Productos listados (unidad: productos)", "i1"),
-        caja("Última ejecución", "i2"),
+        caja("Última ejecución", "i2", tema = "light"),
         caja("Productos en promoción (%)", "i3"),
         caja("Mediana del precio (COP)", "i4"),
         caja("Ahorro máximo entre comercios (COP)", "i5"),
         caja("Cambios de precio, última ejecución (productos)", "i6")
       ),
-
+      
       layout_column_wrap(
         width = 1/2,
         card(full_screen = TRUE,
@@ -121,7 +401,7 @@ ui <- page_navbar(
              highchartOutput("g_disponibilidad", height = "340px"),
              card_footer(textOutput("pie_g4")))
       ),
-
+      
       card(
         full_screen = TRUE,
         card_header("Productos filtrados"),
@@ -131,7 +411,7 @@ ui <- page_navbar(
       )
     )
   ),
-
+  
   nav_panel(
     "Cambios de precio",
     layout_sidebar(
@@ -142,8 +422,9 @@ ui <- page_navbar(
                     selected = if (length(fechas) >= 2) fechas[2] else fechas[1]),
         selectInput("fecha_act", "Captura actual", choices = fechas, selected = fechas[1]),
         numericInput("umbral", "Umbral de variación grande (%)", value = 10, min = 0, max = 100, step = 1),
-        checkboxGroupInput("cambios_comercio", "Comercio", choices = opc$comercios,
-                           selected = opc$comercios),
+        checkboxGroupInput("cambios_comercio", "Comercio",
+                           choiceNames = lapply(opc$comercios, function(x) HTML(chip_comercio(x))),
+                           choiceValues = opc$comercios, selected = opc$comercios),
         selectInput("tipo", "Mostrar",
                     choices = c("Todos", "subió", "bajó", "nuevo", "no observado", "sin comparación", "igual"))
       ),
@@ -153,7 +434,7 @@ ui <- page_navbar(
            card_footer("Precios en COP. Solo se comparan los comercios con ejecución completa en ambas capturas. Una variación mayor al umbral se resalta: verde si bajó, rojo si subió. Parte de los cambios puede deberse a campañas temporales de descuento."))
     )
   ),
-
+  
   nav_panel(
     "Canasta",
     layout_sidebar(
@@ -178,7 +459,7 @@ ui <- page_navbar(
         "Un comercio solo muestra total si tiene todos los productos elegidos.")
     )
   ),
-
+  
   nav_panel(
     "Actualización",
     layout_column_wrap(
@@ -213,7 +494,7 @@ ui <- page_navbar(
                   "funciona al ejecutar la aplicación localmente; en el servidor use el modo sin conexión.")
     )
   ),
-
+  
   nav_spacer(),
   nav_item(span(class = "navbar-text small", textOutput("fecha_datos", inline = TRUE)))
 )
@@ -221,9 +502,9 @@ ui <- page_navbar(
 # ---- Servidor ------------------------------------------------------------
 
 server <- function(input, output, session) {
-
+  
   version <- reactiveVal(0L)   # se incrementa al terminar una actualización (invalida la caché)
-
+  
   filtros <- reactive({
     validate(need(length(input$comercio) > 0, "Seleccione al menos un comercio."))
     rango <- input$precio
@@ -235,39 +516,39 @@ server <- function(input, output, session) {
          busqueda = busqueda(), fecha = input$captura)
   })
   busqueda <- debounce(reactive(input$busqueda), 500)
-
+  
   datos <- reactive(precios_filtrados(con, filtros())) |>
     bindCache(filtros(), version())
   ind <- reactive(indicadores(con, filtros())) |>
     bindCache(filtros(), version())
-
+  
   nota_periodo <- function(i) {
     if (is.na(i$fecha_max)) return("sin datos")
     if (identical(i$fecha_min, i$fecha_max)) paste("captura del", i$fecha_max)
     else paste("capturas del", i$fecha_min, "al", i$fecha_max)
   }
-
+  
   output$fecha_datos <- renderText({
     paste0("Precios al momento de la captura. Última ejecución: ", ind()$ultima_fecha)
   })
-
+  
   # --- Indicadores ---
   output$i1      <- renderText(fmt_n(ind()$productos))
-  output$i1_nota <- renderText(paste0("productos · ", nota_periodo(ind())))
+  output$i1_nota <- renderText(paste0("productos, ", nota_periodo(ind())))
   output$i2      <- renderText(ind()$ultima_fecha)
   output$i2_nota <- renderText(if (ind()$ultima_completa) "completa en todos los comercios"
                                else "parcial en al menos un comercio")
   output$i3      <- renderText({
     i <- ind(); if (i$productos == 0) "—" else paste0(round(100 * i$promos / i$productos, 1), " %")
   })
-  output$i3_nota <- renderText(paste0("de ", fmt_n(ind()$productos), " productos · ", nota_periodo(ind())))
+  output$i3_nota <- renderText(paste0("de ", fmt_n(ind()$productos), " productos, ", nota_periodo(ind())))
   output$i4      <- renderText(fmt_cop(ind()$mediana))
-  output$i4_nota <- renderText(paste0("de ", fmt_n(ind()$con_precio), " productos con precio · ", nota_periodo(ind())))
+  output$i4_nota <- renderText(paste0("de ", fmt_n(ind()$con_precio), " productos con precio, ", nota_periodo(ind())))
   output$i5      <- renderText(fmt_cop(ind()$ahorro_max))
-  output$i5_nota <- renderText(paste0(ind()$ahorro_producto, " · captura del ", ind()$ahorro_fecha))
+  output$i5_nota <- renderText(paste0(ind()$ahorro_producto, ", captura del ", ind()$ahorro_fecha))
   output$i6      <- renderText(fmt_n(ind()$cambios))
   output$i6_nota <- renderText("subió o bajó frente a la ejecución anterior")
-
+  
   # --- Pies de gráfico con unidad y fecha ---
   for (id in c("pie_g1", "pie_g2", "pie_g3", "pie_g4", "pie_tabla")) {
     local({
@@ -277,7 +558,7 @@ server <- function(input, output, session) {
                                        ind()$ultima_fecha, "."))
     })
   }
-
+  
   # --- Gráfico 1: evolución ---
   output$g_evolucion <- renderHighchart({
     req(input$comparable)
@@ -295,7 +576,7 @@ server <- function(input, output, session) {
     }
     hc
   }) |> bindCache(input$comparable, version())
-
+  
   # --- Gráfico 2: precio por unidad ---
   output$g_unitario <- renderHighchart({
     req(input$unidad)
@@ -314,7 +595,7 @@ server <- function(input, output, session) {
     }
     hc
   }) |> bindCache(input$unidad, version())
-
+  
   # --- Gráfico 3: distribución ---
   output$g_distribucion <- renderHighchart({
     d <- distribucion_precios(con, filtros())
@@ -325,7 +606,7 @@ server <- function(input, output, session) {
       hc_yAxis(type = "logarithmic", title = list(text = "Precio (COP, escala logarítmica)")) |>
       hc_tooltip(valueDecimals = 0, valuePrefix = "$")
   }) |> bindCache(filtros(), version())
-
+  
   # --- Gráfico 4: disponibilidad ---
   output$g_disponibilidad <- renderHighchart({
     d <- disponibilidad_por_comercio(con)
@@ -337,7 +618,7 @@ server <- function(input, output, session) {
       hc_yAxis(title = list(text = "Número de productos")) |>
       hc_plotOptions(column = list(stacking = "normal")) |>
       hc_tooltip(shared = TRUE)
-    cols <- c("disponible" = "#2a9d8f", "agotado" = "#e76f51", "no observado" = "#adb5bd")
+    cols <- c("disponible" = "#9bb5a6", "agotado" = "#c9a19b", "no observado" = "#d5dad7")
     for (est in names(cols)) {
       vals <- vapply(cms, function(cm) {
         v <- d$n[d$comercio == cm & d$disponibilidad == est]
@@ -347,14 +628,14 @@ server <- function(input, output, session) {
     }
     hc
   }) |> bindCache(version())
-
+  
   # --- Tabla y descarga ---
   output$tabla <- renderDT({
     d <- datos()
     validate(need(nrow(d) > 0,
-      "Ningún producto cumple los filtros elegidos. Pruebe ampliar el rango de precio o quitar filtros."))
+                  "Ningún producto cumple los filtros elegidos. Pruebe ampliar el rango de precio o quitar filtros."))
     t <- data.frame(
-      Comercio = esc(d$comercio), Producto = esc(d$nombre), Marca = esc(d$marca),
+      Comercio = chip_comercio(d$comercio), Producto = esc(d$nombre), Marca = esc(d$marca),
       Presentación = esc(d$presentacion), `Precio (COP)` = d$precio,
       `Precio unitario (COP)` = d$precio_unitario, `Unidad` = esc(d$unidad_unitaria),
       `Promoción` = ifelse(d$es_promocion == 1, "Sí", "No"),
@@ -366,21 +647,21 @@ server <- function(input, output, session) {
       formatCurrency(c("Precio (COP)", "Precio unitario (COP)"), currency = "$",
                      digits = 0, mark = ".", dec.mark = ",")
   })
-
+  
   output$descargar <- downloadHandler(
     filename = function() paste0("precios_filtrados_", Sys.Date(), ".csv"),
     content  = function(file) utils::write.csv(datos(), file, row.names = FALSE, fileEncoding = "UTF-8")
   )
-
+  
   # --- Actualización de precios (tareas en segundo plano) ---
   tarea_online  <- crear_tarea("online")  |> bind_task_button("actualizar")
   tarea_offline <- crear_tarea("offline") |> bind_task_button("reprocesar")
   ultimo_resumen <- reactiveVal(NULL)
-
+  
   ocupado <- function() {
     any(c(tarea_online$status(), tarea_offline$status()) == "running")
   }
-
+  
   # Las listas de fechas se leen al iniciar; tras actualizar hay que refrescarlas.
   refrescar_fechas <- function() {
     f  <- fechas_captura(con)
@@ -393,7 +674,7 @@ server <- function(input, output, session) {
                       selected = if (length(f) >= 2) f[2] else f[1])
     updateSelectInput(session, "canasta_fecha", choices = fc, selected = fc[1])
   }
-
+  
   terminar <- function(res, modo) {
     ultimo_resumen(res)
     if (is.null(res) || nrow(res) == 0) {
@@ -411,12 +692,12 @@ server <- function(input, output, session) {
     version(version() + 1L)    # invalida la caché: indicadores, gráficos y tablas se recalculan
     refrescar_fechas()
   }
-
+  
   fallo <- function(tarea) {
     msg <- tryCatch({ tarea$result(); "" }, error = function(e) conditionMessage(e))
     showNotification(paste("La actualización falló:", msg), type = "error", duration = NULL)
   }
-
+  
   observeEvent(input$actualizar, {
     if (ocupado()) {
       showNotification("Ya hay una actualización en curso.", type = "warning")
@@ -429,7 +710,7 @@ server <- function(input, output, session) {
       update_task_button("reprocesar", state = "ready")
     } else tarea_offline$invoke()
   })
-
+  
   observeEvent(tarea_online$status(), {
     est <- tarea_online$status()
     if (est == "success") terminar(tarea_online$result(), "online")
@@ -440,12 +721,12 @@ server <- function(input, output, session) {
     if (est == "success") terminar(tarea_offline$result(), "offline")
     if (est == "error")   fallo(tarea_offline)
   })
-
+  
   output$estado_tarea <- renderUI({
     if (ocupado()) p(class = "text-warning mt-2",
                      "Actualización en curso. Puede tardar varios minutos...")
   })
-
+  
   output$tabla_resumen <- renderDT({
     r <- ultimo_resumen()
     validate(need(!is.null(r) && nrow(r) > 0,
@@ -459,7 +740,7 @@ server <- function(input, output, session) {
                     check.names = FALSE, stringsAsFactors = FALSE)
     datatable(t, rownames = FALSE, options = list(dom = "t", scrollX = TRUE, language = idioma_dt))
   })
-
+  
   output$tabla_historial <- renderDT({
     version()
     h <- historial_ejecuciones(con)
@@ -467,7 +748,7 @@ server <- function(input, output, session) {
                   "Total del sitio", "Rechazadas", "Modo", "Motivo", "Copia cruda")
     datatable(h, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = idioma_dt))
   })
-
+  
   # --- Cambios de precio ---
   cambios <- reactive({
     validate(
@@ -476,7 +757,7 @@ server <- function(input, output, session) {
       need(input$fecha_ant != input$fecha_act, "Elija dos capturas distintas."))
     cambios_entre(con, input$fecha_ant, input$fecha_act, input$cambios_comercio)
   }) |> bindCache(input$fecha_ant, input$fecha_act, input$cambios_comercio, version())
-
+  
   output$cambios_cajas <- renderUI({
     d <- cambios()
     n <- function(t) sum(d$tipo == t, na.rm = TRUE)
@@ -487,14 +768,14 @@ server <- function(input, output, session) {
       value_box("Nuevos", n("nuevo")), value_box("Dejaron de observarse", n("no observado")),
       value_box(paste0("Variación ≥ ", input$umbral %||% 10, " %"), grande))
   })
-
+  
   output$tabla_cambios <- renderDT({
     d <- cambios()
     if (input$tipo != "Todos") d <- d[d$tipo == input$tipo, ]
     validate(need(nrow(d) > 0, "No hay productos con ese tipo de cambio entre las capturas elegidas."))
     u <- input$umbral %||% 10
     t <- data.frame(
-      Comercio = esc(d$comercio), Producto = esc(d$nombre), Marca = esc(d$marca),
+      Comercio = chip_comercio(d$comercio), Producto = esc(d$nombre), Marca = esc(d$marca),
       `Precio anterior (COP)` = d$precio_anterior, `Precio actual (COP)` = d$precio_actual,
       `Cambio (COP)` = d$cambio_cop, `Cambio (%)` = d$cambio_pct, Tipo = esc(d$tipo),
       Enlace = enlace_html(d$url), check.names = FALSE, stringsAsFactors = FALSE)
@@ -504,9 +785,9 @@ server <- function(input, output, session) {
                      currency = "$", digits = 0, mark = ".", dec.mark = ",") |>
       formatRound("Cambio (%)", digits = 1, mark = ".", dec.mark = ",") |>
       formatStyle("Cambio (%)",
-                  backgroundColor = styleInterval(c(-u, u), c("#d1e7dd", "transparent", "#f8d7da")))
+                  backgroundColor = styleInterval(c(-u, u), c("#e6efe9", "transparent", "#f3e7e5")))
   })
-
+  
   # --- Canasta ---
   output$cantidades <- renderUI({
     ids <- input$canasta_prod
@@ -516,7 +797,7 @@ server <- function(input, output, session) {
                    value = isolate(input[[paste0("cant_", id)]]) %||% 1, min = 1, max = 99, step = 1)
     }))
   })
-
+  
   canasta <- reactive({
     version()    # se recalcula tras una actualización
     ids <- input$canasta_prod
@@ -529,7 +810,7 @@ server <- function(input, output, session) {
     pr <- precios_canasta(con, ids, input$canasta_fecha, isTRUE(input$solo_disp))
     calcular_canasta(pr, cant, nombres = nombres_comp)
   })
-
+  
   output$canasta_cajas <- renderUI({
     r <- canasta()
     layout_column_wrap(
@@ -544,7 +825,7 @@ server <- function(input, output, session) {
                 if (is.na(r$ahorro)) "—" else fmt_cop(r$ahorro),
                 p(if (is.na(r$ahorro_pct)) "" else paste0(r$ahorro_pct, " %"), class = "small mb-0")))
   })
-
+  
   output$tabla_canasta <- renderDT({
     r <- canasta()$por_comercio
     t <- data.frame(Comercio = r$comercio,
@@ -554,7 +835,7 @@ server <- function(input, output, session) {
     datatable(t, rownames = FALSE, options = list(dom = "t", language = idioma_dt)) |>
       formatCurrency("Costo de la canasta (COP)", currency = "$", digits = 0, mark = ".", dec.mark = ",")
   })
-
+  
   output$tabla_minimo <- renderDT({
     d <- canasta()$detalle
     t <- data.frame(Producto = d$producto, Cantidad = d$cantidad,
