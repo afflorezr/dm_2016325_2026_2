@@ -1,14 +1,10 @@
-------------------------------------------------------------------------
-
-editor_options: markdown: wrap: 72 ---
-
 # Taller 2 · Comparador de precios (Shiny)
 
 **Daniel Mauricio Vanegas Oliveros** · Minería de Datos (2016325) · Universidad Nacional de Colombia
 
 Aplicación web en **Shiny (R)** que consulta una base SQLite, la actualiza con el scraper del Taller 1 y orienta al consumidor sobre dónde comprar una presentación o una canasta de **alimentos y snacks** (categoría *Galletas, cereales, frutos secos, barras convencionales, conservas y otros alimentos*) en **Carulla, Éxito y Jumbo**. Se comparan las mismas 8 presentaciones en los 3 comercios.
 
-**Aplicación publicada:** *(pegar aquí el enlace de shinyapps.io o Posit Connect Cloud)*
+**Aplicación publicada:** *https://h6zgrw-daniel0mauricio-vanegas0oliveros.shinyapps.io/parcial_2/*
 
 ## 1. Cómo ejecutarla
 
@@ -27,7 +23,7 @@ Paquetes: shiny, bslib, DT, highcharter, DBI, RSQLite, dplyr, tibble, stringr, r
 
 ### Datos
 
-`productos.sqlite` ya viene construida. Para regenerarla o agregar una lectura nueva:
+`productos.sqlite` (que cumple la función de `comparador_precios.sqlite`) ya viene construida. Para regenerarla o agregar una lectura nueva:
 
 ``` bash
 Rscript scraper.R       # descarga las páginas a raw/ con el sufijo SUFIJO_EJECUCION ("2" para hoy)
@@ -103,6 +99,7 @@ taller_2/
 
 ## 6. Limitaciones conocidas
 
+- La tienda Jumbo no permitió realizar una segunda revisión, ya que recibió un bloqueo de agents (notificado a la página por el `scraper.r`).
 - La lectura es la **primera página de 8 búsquedas** (≈ 330 productos), no la categoría completa.
 - El scraper **no captura el aviso de «agotado»**: `disponibilidad` queda `NULL` (sin dato). «No observado» se calcula comparando ejecuciones y no significa agotado.
 - El «enlace al anuncio» de la tabla lleva a la **búsqueda** del comercio, porque el scraper no guarda la URL de cada producto.
@@ -112,6 +109,11 @@ taller_2/
 
 ## 7. Declaración de uso de IA
 
-Se usó **Claude (Sonnet 5.5, Anthropic)** para: proponer la estructura de módulos; escribir y depurar el código de `db.R`, `sql_consult.R`, `validacion.R`, `scraper.R`, `graficos.R`, `app_ui.R` y `app_server.R`; escribir las pruebas de `tests/`; y redactar `diccionario_datos.md` y este README.
+Se usó **Claude (Sonnet 5.5, Anthropic)** a la fecha del 11/11/2026 para:
+
+- Proponer la estructura de módulos.
+- Reescribir, reestructurar y depurar el código de `sql_consult.R`, `scraper.R` y `graficos.R` con base a código replicado de las diapositivas de clase.
+- Escribir y depurar el código de `db.R`,`validacion.R`, `app_ui.R` y `app_server.R` con base a código replicado de las diapositivas de clase.
+- Escribir las pruebas de `tests/` y redactar `diccionario_datos.md`.
 
 Verificación: se ejecutaron las 13 pruebas de testthat; se comprobó que `productos.sqlite` reproduce la ejecución del Taller 1 (330 observaciones, 24 comparables y los mismos precios y totales de canasta); y se probó el server con filtros, indicadores, cambios de precio y canasta. Los gráficos de highcharter, el scraping en línea y el despliegue se verifican manualmente antes de la entrega. Soy responsable de todo el código entregado y puedo explicarlo.
