@@ -14,7 +14,8 @@ dm_2016325_2026_2/
 └── nombres_apellidos/
     ├── taller_01/
     ├── taller_02/
-    └── parcial_01/
+    ├── parcial_01/
+    └── parcial_02/
 ```
 
 El nombre exacto de cada actividad será indicado en su enunciado.
