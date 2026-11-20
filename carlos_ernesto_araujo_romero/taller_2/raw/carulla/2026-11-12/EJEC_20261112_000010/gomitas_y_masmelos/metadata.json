@@ -1,0 +1,122 @@
+{
+  "id_ejecucion": "EJEC_20261112_000010",
+  "id_comercio": "carulla",
+  "comercio": "Carulla",
+  "rama": "Gomitas y masmelos",
+  "ruta": "Bebidas, snacks y dulces/Dulces y chocolates/Gomitas y masmelos",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-12T00:00:59-05:00",
+  "fecha_fin": "2026-11-12T00:01:12-05:00",
+  "n_reportado": 426,
+  "n_paginas": 9,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-12T00:01:01-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "fc9b4bfc3d8535aa47249f67da0542f06f32be73861fa7afcdabc955ae3ad0e5"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-12T00:01:03-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "88d7413b07a171f97a57d8ddfcdfaa32346b8ffd89958bad2666dc1746ccc0b4"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-12T00:01:04-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "b8f3a2daa8b21a8418c0fdcc32c8032a6ca4b6de71ff5d91687b51b95285c1fe"
+    },
+    {
+      "numero": 4,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=150&_to=199",
+      "desde": 150,
+      "hasta": 199,
+      "fecha_consulta": "2026-11-12T00:01:06-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_004.json.gz",
+      "sha256": "2ae6018fcdb027bcfae7e2459d18373d4b1c37ce43ff5cdb57083c50716547c2"
+    },
+    {
+      "numero": 5,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=200&_to=249",
+      "desde": 200,
+      "hasta": 249,
+      "fecha_consulta": "2026-11-12T00:01:07-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_005.json.gz",
+      "sha256": "a2344efab1e73f22c456f33a7968ef918c8dd92d106375de76e67d2f827017c9"
+    },
+    {
+      "numero": 6,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=250&_to=299",
+      "desde": 250,
+      "hasta": 299,
+      "fecha_consulta": "2026-11-12T00:01:08-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_006.json.gz",
+      "sha256": "55cd9da1a6ea5be33e98ed92ad71e883ea7137fdf7cc44002fd8f3c191ad48d8"
+    },
+    {
+      "numero": 7,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=300&_to=349",
+      "desde": 300,
+      "hasta": 349,
+      "fecha_consulta": "2026-11-12T00:01:09-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_007.json.gz",
+      "sha256": "aa5df785afc2894aab3f2b8e332aeb8d956d03a5beddbc626992a38bde9f5114"
+    },
+    {
+      "numero": 8,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=350&_to=399",
+      "desde": 350,
+      "hasta": 399,
+      "fecha_consulta": "2026-11-12T00:01:10-05:00",
+      "n_reportado": 426,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_008.json.gz",
+      "sha256": "54ff8f1ff8d3bb183adeff3fec3f559a1a456bbdcb8c1d1ccc1aeecaa77a7f9b"
+    },
+    {
+      "numero": 9,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Bebidas%2C%20snacks%20y%20dulces/Dulces%20y%20chocolates/Gomitas%20y%20masmelos?_from=400&_to=449",
+      "desde": 400,
+      "hasta": 449,
+      "fecha_consulta": "2026-11-12T00:01:12-05:00",
+      "n_reportado": 426,
+      "n": 26,
+      "status": 200,
+      "archivo": "pagina_009.json.gz",
+      "sha256": "027dea51e56c6687e5886c75e6a9467f40eca5736314ad8a836fd70f97586258"
+    }
+  ]
+}

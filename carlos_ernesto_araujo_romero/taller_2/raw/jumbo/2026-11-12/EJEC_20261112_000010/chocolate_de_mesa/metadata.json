@@ -1,0 +1,50 @@
+{
+  "id_ejecucion": "EJEC_20261112_000010",
+  "id_comercio": "jumbo",
+  "comercio": "Jumbo",
+  "rama": "Chocolate de mesa",
+  "ruta": "Supermercado/Despensa/Chocolate De Mesa",
+  "tipo_rama": "filtro_chocolate",
+  "fecha_inicio": "2026-11-12T00:01:41-05:00",
+  "fecha_fin": "2026-11-12T00:01:44-05:00",
+  "n_reportado": 120,
+  "n_paginas": 3,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Despensa/Chocolate%20De%20Mesa?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-12T00:01:41-05:00",
+      "n_reportado": 120,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "5035a17e55c11ae7544c680c098caf4f77f61b24b18baa46ea62ca9faab06e6d"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Despensa/Chocolate%20De%20Mesa?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-12T00:01:43-05:00",
+      "n_reportado": 120,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "105bcb432cab7cc307033526e63385b3b1ec709686442e8e03741e82ca93bd0d"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.jumbocolombia.com/api/catalog_system/pub/products/search/Supermercado/Despensa/Chocolate%20De%20Mesa?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-12T00:01:44-05:00",
+      "n_reportado": 120,
+      "n": 20,
+      "status": 200,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "be056043fd4609055e7be1ab65a736796ce4515dedf7a0d2c4fd47b634a01d8a"
+    }
+  ]
+}

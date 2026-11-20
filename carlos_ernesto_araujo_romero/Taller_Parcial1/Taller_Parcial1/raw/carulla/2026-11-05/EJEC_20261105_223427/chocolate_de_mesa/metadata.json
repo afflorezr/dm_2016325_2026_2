@@ -1,0 +1,86 @@
+{
+  "id_ejecucion": "EJEC_20261105_223427",
+  "id_comercio": "carulla",
+  "comercio": "Carulla",
+  "rama": "Chocolate de mesa",
+  "ruta": "Despensa/Chocolate, té e infusiones/Chocolate",
+  "tipo_rama": "filtro_chocolate",
+  "fecha_inicio": "2026-11-05T22:36:59-05:00",
+  "fecha_fin": "2026-11-05T22:37:06-05:00",
+  "n_reportado": 254,
+  "n_paginas": 6,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Despensa/Chocolate%2C%20t%C3%A9%20e%20infusiones/Chocolate?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-05T22:37:00-05:00",
+      "n_reportado": 254,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "2fb493adc3c05c18d4b67da213880611930a553c30a6b41d859e28dfc570e080"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Despensa/Chocolate%2C%20t%C3%A9%20e%20infusiones/Chocolate?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-05T22:37:01-05:00",
+      "n_reportado": 254,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "7ae999d6b6af5cd26dc8c4a55b6a7a854be8b984798eb1d188b0d1a2dea93cb9"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Despensa/Chocolate%2C%20t%C3%A9%20e%20infusiones/Chocolate?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-05T22:37:02-05:00",
+      "n_reportado": 254,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "f095d5513a97fb4b5ab663fca600578cd968b7152c04f11d4578734820976537"
+    },
+    {
+      "numero": 4,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Despensa/Chocolate%2C%20t%C3%A9%20e%20infusiones/Chocolate?_from=150&_to=199",
+      "desde": 150,
+      "hasta": 199,
+      "fecha_consulta": "2026-11-05T22:37:04-05:00",
+      "n_reportado": 254,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_004.json.gz",
+      "sha256": "dd874f8914a866d8f247b27a4a9a3a0e11207e78259fcf7cbd79915f7cee597a"
+    },
+    {
+      "numero": 5,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Despensa/Chocolate%2C%20t%C3%A9%20e%20infusiones/Chocolate?_from=200&_to=249",
+      "desde": 200,
+      "hasta": 249,
+      "fecha_consulta": "2026-11-05T22:37:05-05:00",
+      "n_reportado": 254,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_005.json.gz",
+      "sha256": "9edd789f9fa099ced730169179b854e08dcf931f8933e5a41d6e3629283f887d"
+    },
+    {
+      "numero": 6,
+      "url": "https://www.carulla.com/api/catalog_system/pub/products/search/Despensa/Chocolate%2C%20t%C3%A9%20e%20infusiones/Chocolate?_from=250&_to=299",
+      "desde": 250,
+      "hasta": 299,
+      "fecha_consulta": "2026-11-05T22:37:06-05:00",
+      "n_reportado": 254,
+      "n": 4,
+      "status": 200,
+      "archivo": "pagina_006.json.gz",
+      "sha256": "89d9b6856a7adc5af6bc06d7415f7fcdb95a33a2354b350ca9291e11416b7c26"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+-- Reconstruye observaciones sin la restricción UNIQUE (id_comercio, sku_comercio,
+-- fecha_consulta) del Taller 1. Esa restricción impide reprocesar una copia cruda
+-- en una ejecución nueva con la misma hora de consulta. La unicidad por ejecución
+-- se conserva con ux_observaciones_ejecucion_anuncio.
+CREATE TABLE observaciones_nueva (
+  id_observacion         INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_ejecucion           TEXT NOT NULL,
+  id_comercio            TEXT NOT NULL,
+  id_producto_comercio   TEXT,
+  sku_comercio           TEXT NOT NULL,
+  texto_original         TEXT NOT NULL,
+  descripcion_original   TEXT,
+  especificaciones_json  TEXT,
+  marca                  TEXT,
+  categoria_sitio        TEXT,
+  subcategoria           TEXT,
+  contenido_valor        REAL,
+  contenido_unidad       TEXT,
+  contenido_total        REAL,
+  unidad_normalizada     TEXT CHECK (unidad_normalizada IN ('g', 'mL', 'unidad')),
+  contenido_origen       TEXT,
+  unidades_por_paquete   INTEGER,
+  empaque_mencionado     INTEGER,
+  precio_cop             REAL,
+  precio_lista_cop       REAL,
+  es_promocion           INTEGER NOT NULL DEFAULT 0 CHECK (es_promocion IN (0, 1)),
+  descuento_pct          REAL,
+  disponible             INTEGER NOT NULL DEFAULT 0 CHECK (disponible IN (0, 1)),
+  estado_disponibilidad  TEXT NOT NULL DEFAULT 'no_observado'
+                         CHECK (estado_disponibilidad IN ('disponible', 'agotado', 'no_observado')),
+  precio_por_unidad      REAL,
+  unidad_precio          TEXT,
+  url_producto           TEXT,
+  fecha_consulta         TEXT NOT NULL,
+  id_producto_comun      TEXT,
+  es_comparable          INTEGER NOT NULL DEFAULT 0 CHECK (es_comparable IN (0, 1)),
+  FOREIGN KEY (id_ejecucion) REFERENCES ejecuciones(id_ejecucion),
+  FOREIGN KEY (id_comercio) REFERENCES comercios(id_comercio),
+  FOREIGN KEY (id_producto_comun) REFERENCES productos_comparables(id_producto_comun),
+  CHECK (precio_cop IS NULL OR precio_cop > 0),
+  CHECK (contenido_valor IS NULL OR contenido_valor > 0),
+  CHECK (unidades_por_paquete IS NULL OR unidades_por_paquete > 0)
+);

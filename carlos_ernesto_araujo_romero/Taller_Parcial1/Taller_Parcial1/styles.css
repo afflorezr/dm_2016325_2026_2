@@ -1,0 +1,572 @@
+/* ==========================================================================
+   Estilo del informe — Comparador de precios de confitería
+   Paleta: chocolate, caramelo, crema, verde, azul y rojo.
+   ========================================================================== */
+
+:root {
+  --choco: #3E2723;
+  --choco-2: #5D4037;
+  --caramel: #C47A3D;
+  --caramel-soft: #E8C9AE;
+  --cream: #FFF3E6;
+  --paper: #FFFDF9;
+  --ink: #2B2118;
+  --muted: #7A5C4B;
+  --green: #2E7D32;
+  --green-soft: #E8F5E9;
+  --red: #C62828;
+  --red-soft: #FDECEA;
+  --blue: #1565C0;
+  --blue-soft: #E3F2FD;
+  --gold: #F2B705;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  padding-bottom: 3rem;
+}
+
+/* El título de YAML se reemplaza por el hero visual. */
+h1.title,
+h3.subtitle,
+h4.author,
+h4.date {
+  display: none;
+}
+
+.container-fluid,
+.container {
+  max-width: 1180px;
+}
+
+/* --------------------------------------------------------------------------
+   Hero
+   -------------------------------------------------------------------------- */
+.hero {
+  position: relative;
+  margin: 1.2rem 0 2rem 0;
+  padding: 2.4rem 2.6rem 2rem 2.6rem;
+  border-radius: 26px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(242, 183, 5, 0.32), transparent 28%),
+    radial-gradient(circle at 12% 88%, rgba(196, 122, 61, 0.45), transparent 32%),
+    linear-gradient(135deg, #2B1B12 0%, #4E342E 48%, #8D5524 100%);
+  box-shadow: 0 22px 50px rgba(62, 39, 35, 0.26);
+  overflow: hidden;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 220px;
+  height: 220px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+}
+
+.hero .kicker {
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #F6D9B8;
+  font-weight: 700;
+  margin-bottom: 0.7rem;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 4.2vw, 3.2rem);
+  line-height: 1.08;
+  font-weight: 800;
+  margin: 0 0 0.5rem 0;
+  color: #fff;
+  border: none;
+  padding: 0;
+}
+
+.hero .hero-sub {
+  font-size: 1.25rem;
+  color: #FBE9D7;
+  margin: 0 0 0.25rem 0;
+  font-weight: 500;
+}
+
+.hero .hero-meta {
+  font-size: 0.86rem;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0 0 1.1rem 0;
+}
+
+.hero .hero-tagline {
+  font-size: 1.02rem;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 820px;
+  margin: 0 0 1.4rem 0;
+}
+
+.hero .kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  position: relative;
+  z-index: 2;
+}
+
+.hero .kpi {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  padding: 0.9rem 0.9rem 0.75rem 0.9rem;
+  backdrop-filter: blur(4px);
+}
+
+.hero .kpi .value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #fff;
+}
+
+.hero .kpi .label {
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.25;
+  margin-top: 0.15rem;
+}
+
+/* --------------------------------------------------------------------------
+   Tipografía y secciones
+   -------------------------------------------------------------------------- */
+h2 {
+  color: var(--choco);
+  font-weight: 800;
+  font-size: 1.7rem;
+  margin: 2.6rem 0 0.9rem 0;
+  padding: 0 0 0.35rem 0.85rem;
+  border-left: 7px solid var(--caramel);
+  border-bottom: 1px solid #EADBCF;
+  scroll-margin-top: 1rem;
+}
+
+h3 {
+  color: var(--choco-2);
+  font-weight: 700;
+  font-size: 1.18rem;
+  margin: 1.6rem 0 0.5rem 0;
+}
+
+h4 {
+  color: var(--choco-2);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+p {
+  margin: 0 0 0.8rem 0;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+ul,
+ol {
+  margin-bottom: 1rem;
+}
+
+li {
+  margin-bottom: 0.3rem;
+}
+
+/* --------------------------------------------------------------------------
+   Tabla de contenido
+   -------------------------------------------------------------------------- */
+#TOC {
+  background: #fff;
+  border: 1px solid #EADBCF;
+  border-radius: 16px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 10px 24px rgba(62, 39, 35, 0.07);
+  font-size: 0.84rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+#TOC > ul {
+  padding-left: 0.8rem;
+}
+
+#TOC li {
+  margin-bottom: 0.15rem;
+}
+
+#TOC a {
+  color: var(--choco-2);
+}
+
+#TOC a:hover {
+  color: var(--caramel);
+  text-decoration: none;
+}
+
+/* --------------------------------------------------------------------------
+   Tablas
+   -------------------------------------------------------------------------- */
+table,
+.table {
+  width: 100% !important;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1rem 0 1.4rem 0;
+  font-size: 0.86rem;
+  background: #fff;
+  border: 1px solid #EADBCF;
+  border-radius: 12px;
+  overflow: visible;
+  box-shadow: 0 4px 14px rgba(62, 39, 35, 0.04);
+}
+
+thead th,
+.table > thead > tr > th {
+  background: var(--choco);
+  color: #fff;
+  font-weight: 600;
+  border: none !important;
+  padding: 0.62rem 0.7rem;
+  vertical-align: middle;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+}
+
+tbody td,
+.table > tbody > tr > td {
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid #F0E4DA !important;
+  vertical-align: middle;
+  color: var(--ink);
+}
+
+tbody tr:nth-child(even) {
+  background: #FDF6EF;
+}
+
+tbody tr:hover {
+  background: #FBEDE0;
+}
+
+caption,
+.table caption {
+  caption-side: top;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0 0 0.55rem 0;
+  text-align: left;
+}
+
+thead th:first-child {
+  border-top-left-radius: 12px;
+}
+
+thead th:last-child {
+  border-top-right-radius: 12px;
+}
+
+tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+
+tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   Callouts
+   -------------------------------------------------------------------------- */
+.callout {
+  border-radius: 14px;
+  padding: 0.95rem 1.15rem;
+  margin: 1rem 0 1.2rem 0;
+  border-left: 6px solid var(--caramel);
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow: 0 3px 10px rgba(62, 39, 35, 0.04);
+}
+
+.callout strong {
+  color: var(--choco);
+}
+
+.callout-success {
+  background: var(--green-soft);
+  border-left-color: var(--green);
+}
+
+.callout-warning {
+  background: #FFF8E1;
+  border-left-color: var(--gold);
+}
+
+.callout-info {
+  background: var(--blue-soft);
+  border-left-color: var(--blue);
+}
+
+.callout-danger {
+  background: var(--red-soft);
+  border-left-color: var(--red);
+}
+
+/* --------------------------------------------------------------------------
+   Tarjetas de hallazgos, pasos y comercios
+   -------------------------------------------------------------------------- */
+.cards-3,
+.steps,
+.store-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.1rem 0 1.5rem 0;
+}
+
+.steps {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.finding,
+.step,
+.store-card {
+  background: #fff;
+  border: 1px solid #EADBCF;
+  border-radius: 16px;
+  padding: 1rem 1.05rem;
+  box-shadow: 0 8px 20px rgba(62, 39, 35, 0.05);
+}
+
+.finding .finding-icon,
+.step .step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: var(--cream);
+  color: var(--caramel);
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-bottom: 0.45rem;
+}
+
+.step .step-num {
+  background: var(--choco);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.finding h3,
+.step h3,
+.store-card h3 {
+  font-size: 1rem;
+  margin: 0.1rem 0 0.35rem 0;
+}
+
+.finding p,
+.step p,
+.store-card p {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.store-card {
+  border-top: 6px solid var(--caramel);
+}
+
+.store-card.exito {
+  border-top-color: var(--gold);
+}
+
+.store-card.carulla {
+  border-top-color: var(--green);
+}
+
+.store-card.jumbo {
+  border-top-color: var(--blue);
+}
+
+.store-card .store-tag {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Badges y utilidades
+   -------------------------------------------------------------------------- */
+.badge {
+  display: inline-block;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.badge.exito {
+  background: #FFF3CD;
+  color: #7A5A00;
+}
+
+.badge.carulla {
+  background: var(--green-soft);
+  color: #1B5E20;
+}
+
+.badge.jumbo {
+  background: var(--blue-soft);
+  color: #0D47A1;
+}
+
+.small,
+.muted {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.center {
+  text-align: center;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #EADBCF, transparent);
+  margin: 2rem 0;
+}
+
+/* --------------------------------------------------------------------------
+   Figuras
+   -------------------------------------------------------------------------- */
+.figure,
+figure {
+  margin: 1.1rem 0 1.6rem 0;
+}
+
+.figure img,
+figure img,
+img {
+  max-width: 100%;
+  border-radius: 12px;
+}
+
+figcaption,
+.figure-caption {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 0.45rem;
+}
+
+/* --------------------------------------------------------------------------
+   Detalles desplegables
+   -------------------------------------------------------------------------- */
+details {
+  background: #fff;
+  border: 1px solid #EADBCF;
+  border-radius: 14px;
+  padding: 0.8rem 1rem;
+  margin: 1rem 0 1.4rem 0;
+  box-shadow: 0 4px 12px rgba(62, 39, 35, 0.04);
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--choco);
+  outline: none;
+}
+
+details[open] summary {
+  margin-bottom: 0.6rem;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 1000px) {
+  .hero .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .steps,
+  .store-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  body {
+    font-size: 15px;
+  }
+
+  .hero {
+    padding: 1.5rem 1.2rem;
+  }
+
+  .hero .kpi-grid,
+  .cards-3,
+  .steps,
+  .store-grid {
+    grid-template-columns: 1fr;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+  }
+
+  #TOC {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Impresión
+   -------------------------------------------------------------------------- */
+@media print {
+  .hero {
+    box-shadow: none;
+    background: #3E2723 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #TOC {
+    display: none;
+  }
+
+  h2 {
+    page-break-after: avoid;
+  }
+
+  .figure,
+  table {
+    page-break-inside: avoid;
+  }
+}

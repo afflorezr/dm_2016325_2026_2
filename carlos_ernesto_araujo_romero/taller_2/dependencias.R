@@ -1,0 +1,21 @@
+# Dependencias del Taller 2.
+# renv::snapshot() detecta los paquetes desde estas llamadas y fija sus
+# versiones en renv.lock. La aplicación carga solo las que necesita.
+library(shiny)
+library(bslib)
+library(highcharter)
+library(DT)
+library(dplyr)
+library(promises)
+library(future)
+library(DBI)
+library(RSQLite)
+library(curl)
+library(jsonlite)
+library(stringr)
+library(purrr)
+library(tibble)
+library(readr)
+library(digest)
+library(htmltools)
+library(testthat)

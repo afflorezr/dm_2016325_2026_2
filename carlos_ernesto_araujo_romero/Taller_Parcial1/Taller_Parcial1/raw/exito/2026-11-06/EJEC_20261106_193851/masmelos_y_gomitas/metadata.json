@@ -1,0 +1,98 @@
+{
+  "id_ejecucion": "EJEC_20261106_193851",
+  "id_comercio": "exito",
+  "comercio": "Éxito",
+  "rama": "Masmelos y gomitas",
+  "ruta": "Mercado/Dulces y chocolatería/Masmelos y gomitas",
+  "tipo_rama": "nucleo",
+  "fecha_inicio": "2026-11-06T19:40:10-05:00",
+  "fecha_fin": "2026-11-06T19:40:20-05:00",
+  "n_reportado": 316,
+  "n_paginas": 7,
+  "paginas": [
+    {
+      "numero": 1,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=0&_to=49",
+      "desde": 0,
+      "hasta": 49,
+      "fecha_consulta": "2026-11-06T19:40:12-05:00",
+      "n_reportado": 316,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_001.json.gz",
+      "sha256": "d99d2016f8f34deb4ac00fcff245146ecb7517dc4d2186d2c299b82f387f92bb"
+    },
+    {
+      "numero": 2,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=50&_to=99",
+      "desde": 50,
+      "hasta": 99,
+      "fecha_consulta": "2026-11-06T19:40:13-05:00",
+      "n_reportado": 316,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_002.json.gz",
+      "sha256": "72e2ca43d91be6677bd28c11d36cc9188ea4d56d19447b81e0049611dc434929"
+    },
+    {
+      "numero": 3,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=100&_to=149",
+      "desde": 100,
+      "hasta": 149,
+      "fecha_consulta": "2026-11-06T19:40:15-05:00",
+      "n_reportado": 316,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_003.json.gz",
+      "sha256": "5aa0dd1e791323a839ae1a1db45d8a3d3b25356d22991ff2948cd23ac67180b9"
+    },
+    {
+      "numero": 4,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=150&_to=199",
+      "desde": 150,
+      "hasta": 199,
+      "fecha_consulta": "2026-11-06T19:40:16-05:00",
+      "n_reportado": 316,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_004.json.gz",
+      "sha256": "27b995ebf6ac874a38fa0e05dd3303424989349fb6181f3e63bad3ad6f5be14b"
+    },
+    {
+      "numero": 5,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=200&_to=249",
+      "desde": 200,
+      "hasta": 249,
+      "fecha_consulta": "2026-11-06T19:40:17-05:00",
+      "n_reportado": 316,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_005.json.gz",
+      "sha256": "d06c54608985fee3a221772e731ff2f7883219abf770de5f22bf3b3e909c84c3"
+    },
+    {
+      "numero": 6,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=250&_to=299",
+      "desde": 250,
+      "hasta": 299,
+      "fecha_consulta": "2026-11-06T19:40:19-05:00",
+      "n_reportado": 316,
+      "n": 50,
+      "status": 206,
+      "archivo": "pagina_006.json.gz",
+      "sha256": "962767822d08d99a4a3918a2c50cd1381ec9217e21658986008ac9af44d04250"
+    },
+    {
+      "numero": 7,
+      "url": "https://www.exito.com/api/catalog_system/pub/products/search/Mercado/Dulces%20y%20chocolater%C3%ADa/Masmelos%20y%20gomitas?_from=300&_to=349",
+      "desde": 300,
+      "hasta": 349,
+      "fecha_consulta": "2026-11-06T19:40:20-05:00",
+      "n_reportado": 316,
+      "n": 16,
+      "status": 200,
+      "archivo": "pagina_007.json.gz",
+      "sha256": "248b56c890d349531d60d30ba6f9b72ab3cfab1ef1a269722245418b3d326ca4"
+    }
+  ]
+}
