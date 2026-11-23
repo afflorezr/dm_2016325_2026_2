@@ -1,0 +1,213 @@
+---
+title: "Mercado de arriendos en Bogotá, Medellín y Cali"
+subtitle: "Taller 10: medidas estadísticas y comunicación de resultados"
+lang: es
+format:
+  html:
+    embed-resources: true
+    toc: true
+    theme: cosmo
+execute:
+  echo: false
+  warning: false
+  message: false
+params:
+  corregir_errores: false
+---
+
+```{r}
+#| label: preparacion
+
+library(tidyverse)
+library(kableExtra)
+
+# los datos los genera generar_datos.R
+arriendos_orig <- read_csv("arriendos.csv", show_col_types = FALSE)
+
+fmt  <- function(x, d = 0) format(round(x, d), big.mark = ".", decimal.mark = ",", nsmall = d)
+pct  <- function(x, d = 0) paste0(fmt(100 * x, d), " %")
+asim <- function(x) mean((x - mean(x))^3) / mean((x - mean(x))^2)^1.5
+cv   <- function(x) sd(x) / mean(x)
+
+# Detección de errores de digitación: se compara cada arriendo con el
+# esperado según estrato, área y ciudad (modelo en escala log). Un cero de
+# más multiplica el valor por 10 (residuo log cercano a 2,3); se marcan los
+# residuos mayores a 1, es decir, arriendos casi 3 veces el esperado.
+modelo <- lm(log(arriendo) ~ estrato + log(area_m2) + ciudad, data = arriendos_orig)
+
+arriendos_orig <- arriendos_orig |>
+  mutate(id = row_number(),
+         esperado = exp(fitted(modelo)),
+         residuo_log = log(arriendo) - fitted(modelo),
+         error_digitacion = residuo_log > 1)
+
+# versión depurada: sin los registros con error de digitación
+arriendos_limpios <- arriendos_orig |> filter(!error_digitacion)
+
+n_errores <- sum(arriendos_orig$error_digitacion)
+
+# datos de trabajo: con errores (por defecto) o corregidos
+datos <- if (params$corregir_errores) arriendos_limpios else arriendos_orig
+version <- if (params$corregir_errores) "corregidos" else "originales, con errores"
+```
+
+Este informe usa `r fmt(nrow(datos))` arriendos de los datos `r version`. Las cifras del texto se calculan directamente desde los datos: si se corrigen los errores (parámetro `corregir_errores: true`, que deja fuera los registros con un cero de más) y se vuelve a renderizar, todas cambian solas.
+
+## 1. ¿Cuánto cuesta un arriendo típico?
+
+```{r}
+#| label: centro
+
+media   <- mean(datos$arriendo)
+mediana <- median(datos$arriendo)
+asim_d  <- asim(datos$arriendo)
+centro  <- if (abs(asim_d) > 0.5) "la mediana" else "la media"
+```
+
+```{r}
+#| label: fig-densidad
+#| fig-cap: "Densidad del arriendo mensual (escala logarítmica) con la media y la mediana."
+#| fig-width: 8
+#| fig-height: 4
+
+ggplot(datos, aes(arriendo)) +
+  geom_density(fill = "#006DAE", alpha = 0.3) +
+  geom_vline(aes(xintercept = media, linetype = "Media"), colour = "#b2182b", linewidth = 0.8) +
+  geom_vline(aes(xintercept = mediana, linetype = "Mediana"), colour = "black", linewidth = 0.8) +
+  scale_x_log10(labels = scales::label_number(big.mark = ".", decimal.mark = ",")) +
+  scale_linetype_manual(values = c(Media = "dashed", Mediana = "solid"), name = NULL) +
+  labs(x = "Arriendo mensual (COP, escala log)", y = "Densidad") +
+  theme_minimal()
+```
+
+La media es de $`r fmt(media)` y la mediana de $`r fmt(mediana)`; la asimetría es `r fmt(asim_d, 2)`. Como la distribución está sesgada a la derecha, el arriendo típico se reporta con `r centro`: $`r fmt(if (centro == "la mediana") mediana else media)`. `r if (media > mediana) paste0("La media queda ", pct(media / mediana - 1), " por encima de la mediana porque unos pocos valores muy altos la arrastran.") else ""`
+
+## 2. ¿En qué ciudad los precios son más dispersos?
+
+```{r}
+#| label: tbl-ciudad
+
+resumen_ciudad <- function(df) {
+  df |>
+    group_by(Ciudad = ciudad) |>
+    summarise(n = n(), Media = mean(arriendo), Mediana = median(arriendo),
+              DE = sd(arriendo), CV = cv(arriendo), IQR = IQR(arriendo),
+              `IQR/mediana` = IQR(arriendo) / median(arriendo), .groups = "drop")
+}
+
+tab_ciudad <- resumen_ciudad(datos)
+
+tab_ciudad |>
+  mutate(across(c(Media, Mediana, DE, IQR), fmt),
+         across(c(CV, `IQR/mediana`), ~ pct(.x, 1))) |>
+  kbl(caption = "Arriendo mensual por ciudad (COP)", align = "lrrrrrrr") |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+cv_min <- tab_ciudad |> slice_min(CV)
+cv_max <- tab_ciudad |> slice_max(CV)
+rel_iqr <- range(tab_ciudad$`IQR/mediana`)
+```
+
+Según el coeficiente de variación, la ciudad más dispersa es `r cv_max$Ciudad` (CV de `r pct(cv_max$CV)`) y la menos dispersa `r cv_min$Ciudad` (`r pct(cv_min$CV)`). Con una medida robusta, el IQR relativo a la mediana, las tres ciudades quedan entre `r pct(rel_iqr[1])` y `r pct(rel_iqr[2])`. `r if (cv_max$CV - cv_min$CV > 0.1) "La diferencia que muestra el CV no se confirma con el IQR: el CV depende de la media y la desviación estándar, que son sensibles a los valores extremos, así que la mayor dispersión aparente se debe a unos pocos registros." else "Las dos medidas coinciden: la dispersión es muy parecida en las tres ciudades."` En todos los casos el CV supera el 30 %, así que los precios dentro de cada ciudad son heterogéneos (varían mucho con el estrato y el área).
+
+## 3. ¿Qué registros son sospechosos?
+
+```{r}
+#| label: atipicos
+
+q <- quantile(datos$arriendo, c(.25, .75))
+lim_inf <- q[1] - 1.5 * IQR(datos$arriendo)
+lim_sup <- q[2] + 1.5 * IQR(datos$arriendo)
+
+atipicos <- datos |>
+  filter(arriendo < lim_inf | arriendo > lim_sup) |>
+  mutate(diagnostico = if_else(residuo_log > 1, "Error de digitación", "Arriendo alto legítimo")) |>
+  arrange(desc(residuo_log))
+
+n_atip  <- nrow(atipicos)
+n_err_atip <- sum(atipicos$diagnostico == "Error de digitación")
+```
+
+La regla del IQR marca como atípicos los arriendos por encima de $`r fmt(lim_sup)`: son `r n_atip` registros. Para saber cuáles son errores se comparó cada arriendo con el esperado según su estrato, área y ciudad: `r if (n_err_atip > 0) paste0(n_err_atip, " superan casi tres veces su valor esperado, lo que corresponde a un cero de más, y los otros ", n_atip - n_err_atip, " son arriendos altos coherentes con estratos altos o áreas grandes.") else "ninguno supera tres veces su valor esperado, así que todos son arriendos altos coherentes con estratos altos o áreas grandes."` Atípico no es sinónimo de error.
+
+```{r}
+#| label: tbl-atipicos
+
+atipicos |>
+  transmute(Registro = id, Ciudad = ciudad, Estrato = estrato, `Área (m²)` = area_m2,
+            Arriendo = fmt(arriendo), `Esperado` = fmt(esperado),
+            `Veces el esperado` = fmt(arriendo / esperado, 1), Diagnóstico = diagnostico) |>
+  kbl(caption = "Arriendos atípicos según la regla del IQR", align = "rlrrrrrl") |>
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE) |>
+  row_spec(which(atipicos$diagnostico == "Error de digitación"), bold = TRUE, color = "#b2182b") |>
+  scroll_box(height = "350px")
+```
+
+## 4. ¿Qué variables se asocian con el arriendo?
+
+```{r}
+#| label: correlaciones
+
+vars <- c("arriendo", "area_m2", "estrato", "antiguedad")
+cor_s <- cor(datos[vars], method = "spearman")
+cor_p <- cor(datos[vars], method = "pearson")
+```
+
+```{r}
+#| label: fig-correlograma
+#| fig-cap: "Correlograma de Spearman."
+#| fig-width: 6
+#| fig-height: 5
+
+as_tibble(cor_s, rownames = "x") |>
+  pivot_longer(-x, names_to = "y", values_to = "rho") |>
+  mutate(across(c(x, y), ~ factor(.x, levels = vars))) |>
+  ggplot(aes(x, y, fill = rho)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = fmt(rho, 2)), size = 4) +
+  scale_fill_gradient2(low = "#b2182b", mid = "white", high = "#2166ac",
+                       midpoint = 0, limits = c(-1, 1)) +
+  labs(x = NULL, y = NULL, fill = "Spearman") +
+  theme_minimal()
+```
+
+El arriendo se asocia sobre todo con el área (Spearman `r fmt(cor_s["arriendo", "area_m2"], 2)`, Pearson `r fmt(cor_p["arriendo", "area_m2"], 2)`) y con el estrato (Spearman `r fmt(cor_s["arriendo", "estrato"], 2)`; se usa Spearman porque el estrato es ordinal). La antigüedad casi no se relaciona con el precio (`r fmt(cor_s["arriendo", "antiguedad"], 2)`). `r if (abs(cor_s["arriendo", "area_m2"] - cor_p["arriendo", "area_m2"]) > 0.1) "La diferencia entre Pearson y Spearman en el área se debe a los valores extremos: Pearson usa los valores y se deja arrastrar por ellos, Spearman usa rangos." else "Pearson y Spearman coinciden en el área, señal de que no hay valores extremos distorsionando la relación."`
+
+## 5. ¿Qué cambia al depurar?
+
+```{r}
+#| label: tbl-antes-despues
+
+resumen <- function(df) {
+  cvs <- resumen_ciudad(df)$CV
+  list(media = mean(df$arriendo), mediana = median(df$arriendo),
+       asimetria = asim(df$arriendo), cv = range(cvs),
+       pearson = cor(df$arriendo, df$area_m2),
+       spearman = cor(df$arriendo, df$area_m2, method = "spearman"))
+}
+a <- resumen(arriendos_orig)
+b <- resumen(arriendos_limpios)
+
+cambio <- function(x, y, tol) if (max(abs(x - y) / abs(x)) > tol) "Sí" else "No"
+
+tibble(
+  Medida = c("Media", "Mediana", "Asimetría", "CV por ciudad",
+             "Pearson con el área", "Spearman con el área"),
+  `Con errores` = c(fmt(a$media), fmt(a$mediana), fmt(a$asimetria, 2),
+                    paste(pct(a$cv[1]), "a", pct(a$cv[2])),
+                    fmt(a$pearson, 2), fmt(a$spearman, 2)),
+  `Sin los errores` = c(fmt(b$media), fmt(b$mediana), fmt(b$asimetria, 2),
+                        paste(pct(b$cv[1]), "a", pct(b$cv[2])),
+                        fmt(b$pearson, 2), fmt(b$spearman, 2)),
+  `¿Cambió mucho?` = c(cambio(a$media, b$media, .03), cambio(a$mediana, b$mediana, .03),
+                       cambio(a$asimetria, b$asimetria, .1), cambio(a$cv, b$cv, .1),
+                       cambio(a$pearson, b$pearson, .1), cambio(a$spearman, b$spearman, .1))
+) |>
+  kbl(caption = paste("Medidas con y sin los", n_errores, "errores de digitación"),
+      align = "lrrc") |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Al quitar los `r n_errores` registros con error de digitación, la media pasa de $`r fmt(a$media)` a $`r fmt(b$media)`, la asimetría de `r fmt(a$asimetria, 2)` a `r fmt(b$asimetria, 2)` y la correlación de Pearson con el área de `r fmt(a$pearson, 2)` a `r fmt(b$pearson, 2)`. La mediana (`r fmt(a$mediana)` y `r fmt(b$mediana)`) y la correlación de Spearman (`r fmt(a$spearman, 2)` y `r fmt(b$spearman, 2)`) prácticamente no se mueven.
+
+**Pregunta de cierre.** Las medidas basadas en el orden de los datos (mediana, IQR, Spearman) son robustas: `r n_errores` valores entre `r fmt(nrow(arriendos_orig))` no cambian qué registro queda en el centro ni el rango de cada observación. Las basadas en momentos (media, desviación estándar, CV, asimetría, Pearson) no lo son, porque usan la magnitud de cada valor: un arriendo diez veces más alto pesa mucho en la suma, y todavía más cuando las desviaciones se elevan al cuadrado o al cubo.
