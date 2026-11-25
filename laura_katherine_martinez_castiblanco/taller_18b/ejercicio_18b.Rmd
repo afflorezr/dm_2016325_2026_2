@@ -1,0 +1,392 @@
+---
+title: "Clase 18b: Análisis no supervisado y K-means con adult.csv"
+author: "Laura Katherine Martinez Castiblanco"
+output:
+  html_document:
+    theme: flatly
+    self_contained: true
+    code_folding: hide
+    mathjax: default
+    toc: true
+    toc_float: true
+    toc_depth: 3
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+# Configuración global del documento reproducible
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.width = 9,
+  fig.height= 5.5,
+  dpi       = 120
+)
+
+# Librerías necesarias
+library(tidyverse)
+library(cluster)      # silhouette()
+library(factoextra)   # fviz_cluster, fviz_nbclust
+library(knitr)
+
+# Tabla HTML reutilizable (mismo helper del ejercicio 11)
+mostrar_tabla <- function(df, caption = "", n = 10) {
+  kable(
+    head(df, n),
+    format   = "html",
+    caption  = caption,
+    table.attr = 'class="table table-striped table-hover table-bordered table-condensed"'
+  )
+}
+```
+
+---
+
+## 1. Contexto del problema
+
+Se dispone del dataset `adult.csv` (Census Income), que contiene información demográfica y laboral de 32 561 adultos. El objetivo del taller 18b es descubrir grupos naturales entre los individuos usando K-means, sin usar la variable respuesta (`income`). Luego se compararán los clusters encontrados con la etiqueta real para evaluar qué tanto la estructura no supervisada coincide con el nivel de ingresos.
+
+### Variables seleccionadas para agrupar
+
+Se usan únicamente variables numéricas continuas que describen perfil socioeconómico y laboral:
+
+| Variable         | Descripción                                             |
+|------------------|---------------------------------------------------------|
+| `age`            | Edad en años                                            |
+| `education.num`  | Años de educación (codificación numérica)               |
+| `hours.per.week` | Horas trabajadas por semana                             |
+| `capital.gain`   | Ganancia de capital (inversiones, ventas de activos)    |
+
+La variable respuesta `income` (≤50K / >50K) se aparta antes de agrupar.
+
+---
+
+## 2. Carga de datos y preparación
+
+```{r carga}
+# Lectura del archivo (ajusta la ruta si tu archivo está en otra carpeta)
+adult <- read.csv("../adult.csv", stringsAsFactors = FALSE)
+
+cat("Dimensiones originales:", nrow(adult), "filas x", ncol(adult), "columnas\n")
+mostrar_tabla(adult, caption = "Primeros registros de adult.csv")
+```
+
+Selección de variables y separación de la respuesta
+
+```{r seleccion}
+# Variables para agrupar (según instrucciones de la Clase 18b)
+vars_cluster <- c("age", "education.num", "hours.per.week", "capital.gain")
+
+# Verificación de que las columnas existen
+stopifnot(all(vars_cluster %in% names(adult)))
+
+# Matriz X (solo predictoras numéricas) — la respuesta se aparta
+X <- adult %>% select(all_of(vars_cluster))
+y <- adult$income   # se guarda para el cruce posterior, NO se usa en K-means
+
+glimpse(X)
+```
+
+K-means no acepta `NA`. Revisamos y, si existen, los eliminamos de `X` y de `y` en paralelo para mantener la alineación.
+
+```{r faltantes}
+na_por_col <- colSums(is.na(X))
+cat("NA por columna en X:\n")
+print(na_por_col)
+
+# Eliminación lista completa (solo si hay NA)
+if (any(na_por_col > 0)) {
+  idx_na   <- !complete.cases(X) | is.na(y)
+  X        <- X[!idx_na, ]
+  y        <- y[!idx_na]
+  cat("Filas eliminadas por NA:", sum(idx_na), "\n")
+}
+
+cat("Dimensión final de X:", nrow(X), "x", ncol(X), "\n")
+```
+
+---
+
+## 3. Escalado de variables 
+
+K-means minimiza la inercia (suma de distancias euclidianas al cuadrado). La distancia euclidiana es sensible a la escala: una variable medida en miles dominará el cálculo frente a una medida en unidades.
+
+los rangos originales:
+
+```{r rangos}
+X %>%
+  summarise(across(everything(), list(
+    min  = ~min(.),
+    max  = ~max(.),
+    mean = ~mean(.),
+    sd   = ~sd(.)
+  ))) %>%
+  pivot_longer(everything(),
+               names_sep   = "_",
+               names_to    = c("variable", "estadistico")) %>%
+  pivot_wider(names_from = estadistico, values_from = value) %>%
+  kable(caption = "Estadísticos descriptivos antes del escalado")
+```
+
+Se observa que `capital.gain` tiene valores hasta ~100 000 mientras que `age` va de 17 a 90. Sin escalar, la distancia estaría dominada casi exclusivamente por `capital.gain`, y las demás variables serían ignoradas por el algoritmo, produciendo clusters artificiales basados solo en ganancias de capital.
+
+### Estandarización (z-score):
+
+```{r escalado}
+X_esc <- as.data.frame(scale(X))
+
+X_esc %>%
+  summarise(across(everything(), list(
+    mean = ~round(mean(.), 6),
+    sd   = ~round(sd(.),   6)
+  ))) %>%
+  kable(caption = "Estadísticos después del escalado (media≈0, sd≈1)")
+```
+
+Todas las variables quedan en escala comparable: media ≈ 0 y desviación estándar ≈ 1.
+
+---
+
+## 4. Elección del número de clusters (K)
+
+`adult.csv` tiene 32 561 filas; calcular la silueta sobre el dataset completo es costoso. Siguiendo la indicación de la Clase 18b, trabajamos sobre una muestra de 5 000 filas para la selección de K.
+
+```{r muestra}
+set.seed(2026)
+n_muestra <- 5000
+idx_muestra <- sample(nrow(X_esc), n_muestra)
+X_muestra   <- X_esc[idx_muestra, ]
+y_muestra   <- y[idx_muestra]
+
+cat("Tamaño de la muestra:", nrow(X_muestra), "\n")
+```
+
+### 4.2 Inercia (método del codo) y silueta para K = 2, …, 8
+
+```{r codo_silueta}
+K_vals    <- 2:8
+inercias  <- numeric(length(K_vals))
+siluetas  <- numeric(length(K_vals))
+
+set.seed(2026)
+for (i in seq_along(K_vals)) {
+  k            <- K_vals[i]
+  km           <- kmeans(X_muestra, centers = k, nstart = 25, iter.max = 100)
+  inercias[i]  <- km$tot.withinss
+  sil          <- silhouette(km$cluster, dist(X_muestra))
+  siluetas[i]  <- mean(sil[, "sil_width"])
+}
+
+resumen_k <- tibble(
+  K        = K_vals,
+  Inercia  = round(inercias, 2),
+  Silueta  = round(siluetas, 4)
+)
+
+kable(resumen_k, caption = "Inercia y silueta promedio para K = 2 a 8")
+```
+
+
+```{r viz_codo_silueta, fig.show='hold', out.width='100%', fig.cap='Método del codo (izq.) y silueta promedio (der.)'}
+par(mfrow = c(1, 2))
+
+# Codo
+plot(K_vals, inercias, type = "b", pch = 19, col = "steelblue",
+     xlab = "Número de clusters (K)", ylab = "Inercia (WCSS)",
+     main = "Método del codo")
+grid()
+
+# Silueta
+plot(K_vals, siluetas, type = "b", pch = 19, col = "darkorange",
+     xlab = "Número de clusters (K)", ylab = "Silueta promedio",
+     main = "Coeficiente de silueta")
+grid()
+
+```
+
+Para identificar el codo con mayor objetividad, se calculan las diferencias entre inercias consecutivas:
+
+```{r deltas}
+deltas_inercia <- diff(inercias)
+nombres_deltas <- paste0("K=", K_vals[-length(K_vals)], " → K=", K_vals[-1])
+
+tibble(
+  Transicion         = nombres_deltas,
+  Caida_Inercia      = round(abs(deltas_inercia), 2),
+  Caida_Relativa_pct = round(abs(deltas_inercia) / inercias[-length(inercias)] * 100, 2)
+) %>%
+  kable(caption = "Caídas absolutas y relativas de la inercia entre K consecutivos")
+```
+
+Se selecciona K = 4 se sustenta en tres criterios convergentes que, evaluados en conjunto, señalan un punto de equilibrio entre compactación, separación e interpretabilidad:
+
+#### Criterio 1 — Punto de inflexión en el método del codo (inercia)
+
+Las mayores reducciones de varianza intra-cluster (WCSS) ocurren al pasar de:
+
+- K = 2 → K = 3: caída de 3 596.36 unidades de inercia.
+- K = 3 → K = 4: caída de 2 679.59 unidades.
+
+A partir de K = 4 la curva se aplana: el salto a K = 5 cae a la mitad (1 381.60), lo que indica rendimientos decrecientes claros. Agregar más clusters a partir de 4 aporta cada vez menos compactación por grupo añadido, señal clásica de codo.
+
+#### Criterio 2 — Recuperación de la silueta tras aislar los outliers
+
+La silueta presenta un comportamiento no monótono que solo se explica al analizar la estructura interna:
+
+| K   | Silueta | Lectura                                                                                             |
+|-----|---------|-----------------------------------------------------------------------------------------------------|
+| 2   | 0.8366  | Valor engañosamente alto: solo separa los ~159 casos extremos de `capital.gain` del resto.          |
+| 3   | 0.2427  | Caída brusca: el algoritmo mantiene aislados los 159 outliers y divide la población general en solo 2 grupos (15 571 y 16 831 registros), produciendo solapamiento natural de las variables demográficas. |
+| 4   | 0.2892  | Recuperación apreciable: al subdividir la población general en 3 perfiles socioeconómicos + el segmento de alto capital, la cohesión interna mejora. |
+| 5–8 | 0.3086 → 0.3271 | Avance marginal (~0.02 en 4 unidades de K): rendimientos decrecientes claros.               |
+
+K = 4 marca el codo de la silueta: a partir de ahí, cada cluster adicional aporta menos de 0.01 puntos de silueta.
+
+#### Criterio 3 — Interpretabilidad en la fase de evaluación KDD
+
+Con K = 4 se obtiene una partición con sentido de negocio:
+
+- 3 perfiles socioeconómicos bien diferenciados por edad, nivel educativo y horas semanales trabajadas.
+- 1 segmento de ganancias de capital extraordinarias, que agrupa a los ~159 individuos con `capital.gain` muy por encima del resto.
+
+Esta estructura evita fragmentar innecesariamente la muestra (como ocurriría con K ≥ 5) y a la vez no colapsa perfiles distintos (como ocurriría con K ≤ 3). Es el número de grupos que mejor balancea la fidelidad a la estructura de los datos con la utilidad para la toma de decisiones.
+
+> Decisión final: se adopta K = 4 por convergencia de los tres criterios.
+
+
+---
+
+## 5. Ajuste final de K-means con K = 4
+
+```{r ajuste_final}
+set.seed(2026)
+km_final <- kmeans(X_esc, centers = 4, nstart = 25, iter.max = 100)
+
+cat("Inercia final:     ", round(km_final$tot.withinss, 2), "\n")
+cat("Iteraciones:       ", km_final$iter, "\n")
+cat("Tamaño de clusters:", km_final$size, "\n")
+
+```
+
+ Centros de los clusters (en escala estandarizada):
+
+```{r centros}
+centros_esc <- as.data.frame(km_final$centers)
+centros_esc %>%
+  mutate(cluster = row_number()) %>%
+  select(cluster, everything()) %>%
+  kable(caption = "Centroides en escala estandarizada (media=0, sd=1)",
+        digits = 3)
+```
+
+Centros en escala original (interpretables):
+
+```{r centros_orig}
+# 1. Extraer medias y desviaciones estándar originales en el mismo orden de los centroides
+vars   <- colnames(km_final$centers)
+medias <- colMeans(X[, vars], na.rm = TRUE)
+desv   <- apply(X[, vars], 2, sd, na.rm = TRUE)
+
+# 2. Invertir la estandarización: x = (z * sd) + media
+centros_orig <- as.data.frame(
+  sweep(km_final$centers, 2, desv, "*") |>
+    sweep(2, medias, "+")
+)
+
+# 3. Presentar tabla interpretable incluyendo el tamaño de cada grupo
+centros_orig %>%
+  mutate(cluster = row_number(), n = km_final$size) %>%
+  select(cluster, n, everything()) %>%
+  kable(caption = "Centroides en unidades originales", digits = 2)
+```
+
+---
+
+## 6. Perfil de cada cluster y asignación de nombres
+
+```{r perfil}
+perfil <- X %>%
+  mutate(cluster = factor(km_final$cluster)) %>%
+  group_by(cluster) %>%
+  summarise(
+    n             = n(),
+    edad_prom     = round(mean(age), 1),
+    edu_prom      = round(mean(education.num), 2),
+    horas_prom    = round(mean(hours.per.week), 1),
+    capital_prom  = round(mean(capital.gain), 0),
+    .groups = "drop"
+  )
+
+kable(perfil, caption = "Perfil de cada cluster en unidades originales")
+```
+
+| Cluster | Perfil observado                                                                 | Nombre propuesto                           |
+|---------|----------------------------------------------------------------------------------|--------------------------------------------|
+| 1   | Jóvenes (~28–32 años), educación media-baja (~9–10 años), pocas horas, capital nulo. | "Jóvenes con baja acumulación"         |
+| 2   | Adultos (~38–42 años), educación media (~10 años), horas estándar (~40 h), capital bajo. | "Adultos estándar — fuerza laboral estable" |
+| 3   | Adultos maduros (~42–45 años), educación alta (~11–13 años), muchas horas (>45 h), capital moderado. | "Profesionales intensivos"             |
+| 4   | Edad variable, educación alta, horas altas y `capital.gain` extraordinario (muy superior al resto). | "Alto capital / inversionistas"        |
+
+> El cluster 4 agrupa a los ~159 casos extremos de `capital.gain` que, con K = 3, quedaban aislados como único grupo distinto al resto. Con K = 4, la población general se subdivide en tres perfiles socioeconómicos diferenciados, enriqueciendo el análisis sin fragmentar innecesariamente la muestra.
+
+### 6.1 Visualización en 2D (PCA sobre los clusters)
+
+```{r viz_clusters, fig.cap='Proyección PCA de los 4 clusters (las dos primeras componentes principales).'}
+X_esc %>%
+  prcomp() %>%
+  .$x %>%
+  as.data.frame() %>%
+  mutate(cluster = factor(km_final$cluster)) %>%
+  ggplot(aes(PC1, PC2, col = cluster)) +
+  geom_point(alpha = 0.4, size = 1.2) +
+  stat_ellipse(level = 0.90, linewidth = 0.8) +
+  scale_color_brewer(palette = "Set2") +
+  theme_minimal() +
+  labs(title = "Clusters de K-means proyectados en PCA (K = 4)",
+       subtitle = "El cluster 4 (alto capital) se separa claramente; los otros 3 se distinguen por edad/educación/horas")
+```
+
+---
+
+## 7. Cruce con la variable respuesta `income`
+
+Aunque K-means no usó `income`, podemos cruzar los clusters con esta etiqueta para ver si la estructura descubierta coincide con el nivel de ingresos.
+
+```{r cruce}
+tabla_cruce <- table(
+  Cluster  = km_final$cluster,
+  Ingreso  = y
+)
+
+tabla_cruce_prop <- prop.table(tabla_cruce, margin = 1) * 100
+
+kable(tabla_cruce, caption = "Tabla de contingencia: Cluster vs Ingreso (frecuencias)")
+kable(round(tabla_cruce_prop, 2),
+      caption = "Distribución porcentual del ingreso dentro de cada cluster")
+```
+
+Interpretación del cruce:
+
+- Cluster 1 (Jóvenes con baja acumulación): predominan los ingresos ≤50K, coherente con perfiles jóvenes, con baja educación y poco capital.
+- Cluster 2 (Adultos estándar): mezcla de ambos niveles, con mayoría de ≤50K; corresponde al grupo "medio" de la fuerza laboral.
+- Cluster 3 (Profesionales intensivos): proporción mayor de >50K que los clusters 1 y 2, consistente con mayor educación y horas trabajadas.
+- Cluster 4 (Alto capital / inversionistas): alta proporción de >50K, coherente con que `capital.gain` es uno de los predictores más fuertes de ingresos altos en este dataset.
+
+Conclusión clave: K-means no recupera perfectamente la etiqueta `income` (eso no era su objetivo), pero sí descubre una estructura que se correlaciona con ella de forma graduada: los clusters 3 y 4 concentran la mayor proporción de ingresos altos, mientras que los clusters 1 y 2 concentran los ingresos bajos. Esto ilustra el valor del análisis no supervisado como herramienta exploratoria: los clusters pueden anticipar o aproximar una variable de negocio incluso sin haberla visto, y con K = 4 se logra una graduación fina del riesgo/oportunidad que con K = 2 o K = 3 se perdería.
+
+---
+
+## 8. Conclusiones
+
+1. El escalado fue indispensable. Sin estandarizar, `capital.gain` (rango 0–100 000) habría dominado por completo la distancia euclidiana y los clusters reflejarían solo esa variable.
+2. La elección de K = 4 se justificó con tres criterios convergentes:
+   - Codo de la inercia: las caídas más grandes ocurren en K = 2→3 y K = 3→4; a partir de K = 4 los rendimientos se reducen a la mitad.
+   - Recuperación de la silueta: tras el valle en K = 3 (0.2427), la silueta sube a 0.2892 en K = 4 y se estabiliza hasta K = 8 (0.3271).
+   - Interpretabilidad KDD: 3 perfiles socioeconómicos diferenciados + 1 segmento de alto capital, sin fragmentar la muestra.
+3. Los perfiles descubiertos tienen sentido en el dominio: jóvenes con baja acumulación, adultos estándar, profesionales intensivos y un subgrupo de alto capital.
+4. El cruce con `income` muestra que la estructura no supervisada se correlaciona de forma graduada con el nivel de ingresos, especialmente al separar el cluster de alto capital y al distinguir profesionales intensivos del resto.
+5. Valor agregado de K = 4 frente a K = 3: con K = 3 la población general quedaba colapsada en solo 2 grupos; con K = 4 se enriquece el análisis con un tercer perfil socioeconómico sin sacrificar cohesión.
+6. Limitaciones: K-means asume clusters esféricos y de tamaño similar; en datos con formas irregulares o densidades variables convendría comparar con DBSCAN o clustering jerárquico (próximas clases).

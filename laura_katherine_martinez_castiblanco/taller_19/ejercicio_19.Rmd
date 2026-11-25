@@ -1,0 +1,828 @@
+---
+title: "Clase 19: Jerárquico, DBSCAN, reglas de asociación y anomalías"
+author: "Laura Katherine Martinez Castiblanco"
+output:
+  html_document:
+    theme: flatly
+    self_contained: true
+    code_folding: hide
+    mathjax: default
+    toc: true
+    toc_float: true
+    toc_depth: 3
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.width = 9,
+  fig.height= 5.5,
+  dpi       = 120
+)
+
+# Librerías necesarias
+library(tidyverse)
+library(dbscan)       # dbscan(), knnDistplot(), lof()
+library(cluster)      # silhouette()
+library(factoextra)   # fviz_dend
+library(arules)       # apriori()
+library(solitude)     # Isolation Forest
+library(knitr)
+library(mclust)
+
+mostrar_tabla <- function(df, caption = "", n = 10) {
+  kable(
+    head(df, n),
+    format     = "html",
+    caption    = caption,
+    table.attr = 'class="table table-striped table-hover table-bordered table-condensed"'
+  )
+}
+```
+
+---
+
+# PRÁCTICA 1 — Accidentes de tránsito: avenida, cruce y aislados
+
+## 1. Contexto
+
+La Secretaría de Movilidad cuenta con 195 reportes de accidentes en una localidad.
+Se sospecha la existencia de:
+
+- una avenida en arco donde se concentran los accidentes,
+- un cruce peligroso (mancha compacta),
+- algunos accidentes aislados (ruido).
+
+El objetivo es descubrir las zonas críticas sin usar la etiqueta `zona`, comparar tres métodos de agrupamiento (Jerárquico Ward, Jerárquico Simple y DBSCAN) y recomendar uno a la Secretaría.
+
+## 2. Generación y preparación de los datos
+
+```{r}
+set.seed(2026)
+
+# --- Avenida en arco (120 puntos) ---
+t        <- runif(120, 0, pi)
+avenida  <- data.frame(
+  x = 5 + 4 * cos(t) + rnorm(120, 0, 0.25),
+  y = 1 + 4 * sin(t) + rnorm(120, 0, 0.25)
+)
+
+# --- Cruce compacto (60 puntos) ---
+cruce <- data.frame(
+  x = rnorm(60, 5, 0.35),
+  y = rnorm(60, 1.8, 0.35)
+)
+
+# --- Aislados (15 puntos) ---
+aislados <- data.frame(
+  x = runif(15, 0, 10),
+  y = runif(15, 0, 8)
+)
+
+# Consolidar y guardar la "verdad" (zona) para evaluar al final
+acc <- rbind(avenida, cruce, aislados)
+acc$zona <- factor(rep(c("avenida", "cruce", "aislado"), c(120, 60, 15)))
+
+cat("Dimensiones del dataset:", nrow(acc), "filas x", ncol(acc), "columnas\n")
+cat("Distribución de zonas:\n")
+print(table(acc$zona))
+```
+
+
+```{r}
+# Guardamos la verdad en un vector aparte; el algoritmo NO la verá.
+zona_verdad <- acc$zona
+acc_sin_zona <- acc %>% select(-zona)
+
+ggplot(acc_sin_zona, aes(x, y)) +
+  geom_point(alpha = 0.6, size = 1.6, color = "steelblue") +
+  theme_minimal() +
+  labs(
+    title    = "Mapa de accidentes (sin la etiqueta de zona)",
+    x = "Este–Oeste (cuadras)", y = "Norte–Sur (cuadras)"
+  ) +
+  coord_fixed()
+```
+ se distinguen claramente tres estructuras:
+
+1. Un arco / media luna (la avenida).
+2. Una mancha compacta hacia el centro-bajo (el cruce).
+3. Varios puntos dispersos por todo el mapa (aislados).
+
+Esta forma en arco es clave: K-means y Jerárquico con Ward tienden a romper el arco porque asumen grupos esféricos; DBSCAN debería respetarlo.
+
+---
+
+## 3. Clustering Jerárquico
+
+ Ward vs. enlace simple — dendrogramas:
+
+```{r}
+# Matriz de distancias euclidianas (las unidades son homogéneas: cuadras)
+d_acc <- dist(acc_sin_zona)
+
+# Dos modelos: Ward.D2 (compacto) y single (cadena)
+mod_ward   <- hclust(d_acc, method = "ward.D2")
+mod_simple <- hclust(d_acc, method = "single")
+
+par(mfrow = c(1, 2))
+plot(mod_ward,   hang = -1, main = "Jerárquico — Ward",
+     xlab = "", sub = "", cex = 0.4)
+plot(mod_simple, hang = -1, main = "Jerárquico — enlace simple",
+     xlab = "", sub = "", cex = 0.4)
+```
+
+- Ward: las alturas de fusión llegan hasta ~40. Se observan varios "escalones" importantes: uno alrededor de 12, otro cerca de 25 y el gran salto final cerca de 40.
+
+- Enlace simple: la mayoría de fusiones ocurren a alturas muy bajas (<0.5), con un salto grande al final (~2.5). Esto es típico del efecto cadena: los puntos se van "enganchando" uno a uno a distancias pequeñas, y solo al final se unen los macro-grupos.
+
+
+ Elegir K con el salto más grande del dendrograma
+
+```{r}
+# Intento ingenuo: el salto más grande
+alturas_ward <- sort(mod_ward$height)
+saltos_ward  <- diff(alturas_ward)
+k_ward_naive <- which.max(saltos_ward) + 1
+cat("K ingenuo por Ward (salto máximo):", k_ward_naive, "\n")
+
+alturas_simple <- sort(mod_simple$height)
+saltos_simple  <- diff(alturas_simple)
+k_simple_naive <- which.max(saltos_simple) + 1
+cat("K ingenuo por enlace simple (salto máximo):", k_simple_naive, "\n")
+```
+
+Ambos dan K = 194, casi el número total de puntos. ¿Por qué?
+
+El último salto del dendrograma siempre es el más grande en valor absoluto, porque une los dos últimos macro-grupos (cada uno con decenas de puntos) en uno solo. Ese salto no informa sobre la estructura natural de los datos: es una consecuencia matemática de que al final solo quedan dos grupos por unir.
+
+Excluiuendo el último salto y buscar el mayor entre los restantes. Además, para evitar K demasiado grandes por ruido, restringimos la búsqueda a saltos que produzcan un K "razonable" (entre 2 y 10).
+
+```{r}
+elegir_K_robusto <- function(mod_hclust, nombre = "", k_max = 10) {
+  alturas <- sort(mod_hclust$height)
+  saltos  <- diff(alturas)
+  # Excluir el último salto (siempre inflado)
+  saltos_recortados <- saltos[-length(saltos)]
+  # Candidatos: índices donde el salto es grande y produce K <= k_max
+  candidatos <- which(saltos_recortados == max(saltos_recortados))
+  # Si hay varios empates, tomar el que dé menor K (más parsimonioso)
+  k_elegido <- min(candidatos) + 1
+  # Si aún es muy grande, buscar el segundo salto más grande
+  if (k_elegido > k_max) {
+    saltos_ordenados <- order(saltos_recortados, decreasing = TRUE)
+    for (i in seq_along(saltos_ordenados)) {
+      k_cand <- saltos_ordenados[i] + 1
+      if (k_cand <= k_max) {
+        k_elegido <- k_cand
+        break
+      }
+    }
+  }
+  cat(sprintf("K sugerido para %s (método robusto): %d\n", nombre, k_elegido))
+  return(k_elegido)
+}
+
+k_ward   <- elegir_K_robusto(mod_ward,   "Ward",          k_max = 6)
+k_simple <- elegir_K_robusto(mod_simple, "enlace simple", k_max = 6)
+```
+
+al mirar el dendrograma de Ward, el salto más informativo (excluyendo el último) ocurre entre las alturas ~25 y ~40, lo que corresponde a K = 4 (aunque se sugieren 6 con el metodo robusto, pues no separa bien este tipo de datos): tres pedazos del arco + el cruce. Para enlace simple, el salto informativo está entre ~1.8 y ~2.5, dando K = 3.
+
+```{r}
+# Fijamos los valores que se leen en el dendrograma
+k_ward   <- 4
+k_simple <- 3
+cat("K Ward:  ", k_ward, "\n")
+cat("K Simple:", k_simple, "\n")
+```
+
+ Cortar el dendrograma y mapear
+
+```{r}
+acc$clust_ward   <- factor(cutree(mod_ward,   k = k_ward))
+acc$clust_simple <- factor(cutree(mod_simple, k = k_simple))
+
+p_ward <- ggplot(acc, aes(x, y, color = clust_ward)) +
+  geom_point(size = 1.8, alpha = 0.7) +
+  theme_minimal() +
+  labs(title = paste0("Jerárquico Ward — K = ", k_ward),
+       color = "Cluster") +
+  coord_fixed()
+
+p_simple <- ggplot(acc, aes(x, y, color = clust_simple)) +
+  geom_point(size = 1.8, alpha = 0.7) +
+  theme_minimal() +
+  labs(title = paste0("Jerárquico Simple — K = ", k_simple),
+       color = "Cluster") +
+  coord_fixed()
+
+
+par(mfrow = c(1, 2))
+p_ward
+p_simple
+```
+¿qué hizo cada método?
+
+Ward con K = 4:
+
+- Cluster 1 (rojo): tercio izquierdo del arco (accidentes de x ≈ 0–3).
+- Cluster 2 (verde): parte superior del arco (x ≈ 4–6, y alta).
+- Cluster 3 (cyan): tercio derecho del arco (x ≈ 7–10).
+- Cluster 4 (morado): el cruce compacto (x ≈ 5, y ≈ 2).
+
+Ward rompió el arco en tres pedazos porque fuerza grupos compactos y esféricos. El cruce, al ser ya compacto, queda bien identificado.
+
+Enlace simple con K = 3:
+
+- Los dos clusters más pequeños corresponden a accidentes aislados que se separaron primero (efecto cadena inverso: los outliers quedan "colgando" de ramas largas).
+- El cluster gigante absorbe avenida + cruce + el resto de aislados.
+
+Esto ilustra la fragilidad del enlace simple: con K pequeño, une todo en un solo macro-cluster; con K grande, va separando outliers uno por uno antes que las estructuras reales.
+
+```{r}
+# Tabla de contingencia: cluster vs zona verdadera
+tabla_ward   <- table(Ward   = acc$clust_ward,   Zona = zona_verdad)
+tabla_simple <- table(Simple = acc$clust_simple, Zona = zona_verdad)
+
+kable(tabla_ward,   caption = "Ward (K=4) vs zona verdadera")
+kable(tabla_simple, caption = "Enlace simple (K=3) vs zona verdadera")
+```
+
+- En Ward, el cluster 4 es casi puro "cruce", pero la avenida quedó repartida en tres clusters (1, 2 y 3), mezclándose un poco con aislados en los extremos.
+- En enlace simple, el cluster grande mezcla avenida, cruce y aislados; los otros dos clusters son casi puros "aislado", pero solo captura 1 de los 15 aislados reales.
+
+Ningún jerárquico captura bien las tres estructuras simultáneamente. Pasemos a DBSCAN.
+
+---
+
+## 4. DBSCAN
+
+Gráfico de k-distancias para elegir ε (con `minPts = 5`)
+
+```{r}
+minPts <- 5
+
+# k-NN distance plot: k = minPts - 1 = 4
+knn_plot <- dbscan::kNNdistplot(acc_sin_zona, k = minPts - 1)
+title(main = "k-distancias (k = 4)")
+abline(h = 1.0, lty = 2, col = "red")   # candidato ε
+abline(h = 1.5, lty = 2, col = "blue")  # candidato ε
+```
+
+El codo de la curva aparece entre `ε = 1.0` y `ε = 1.5`.
+Probaremos varios valores y se trabaja con el que mejor separa las tres estructuras.
+
+DBSCAN con `minPts = 5` y ε elegido
+
+```{r}
+eps_elegido <- 1.2   # valor en la zona del codo
+
+mod_dbs <- dbscan(acc_sin_zona, eps = eps_elegido, minPts = 5)
+
+acc$clust_dbs <- factor(mod_dbs$cluster)   # 0 = ruido
+
+cat("ε usado:      ", eps_elegido, "\n")
+cat("minPts:       ", minPts, "\n")
+cat("Clusters:     ", max(mod_dbs$cluster), "\n")
+cat("Puntos ruido: ", sum(mod_dbs$cluster == 0), "\n")
+```
+Mapa de DBSCAN
+
+```{r}
+ggplot(acc, aes(x, y, color = clust_dbs)) +
+  geom_point(size = 2, alpha = 0.8) +
+  scale_color_discrete(na.value = "grey30") +
+  theme_minimal() +
+  labs(
+    title = paste0("DBSCAN — ε = ", eps_elegido, ", minPts = ", minPts),
+    subtitle = paste0("Clusters: ", max(mod_dbs$cluster),
+                      "  |  Ruido: ", sum(mod_dbs$cluster == 0)),
+    color = "Cluster\n(0 = ruido)"
+  ) +
+  coord_fixed()
+```
+
+Sensibilidad de DBSCAN: ε a la mitad y al doble
+
+```{r}
+eps_mitad <- eps_elegido / 2
+eps_doble <- eps_elegido * 2
+
+mod_mitad <- dbscan(acc_sin_zona, eps = eps_mitad, minPts = minPts)
+mod_doble <- dbscan(acc_sin_zona, eps = eps_doble, minPts = minPts)
+
+resumen_dbs <- tibble(
+  Escenario = c("ε elegido", "ε a la mitad", "ε al doble"),
+  epsilon   = c(eps_elegido, eps_mitad, eps_doble),
+  clusters  = c(max(mod_dbs$cluster),
+                max(mod_mitad$cluster),
+                max(mod_doble$cluster)),
+  ruido     = c(sum(mod_dbs$cluster == 0),
+                sum(mod_mitad$cluster == 0),
+                sum(mod_doble$cluster == 0))
+)
+kable(resumen_dbs, caption = "Sensibilidad de DBSCAN al cambiar ε")
+```
+
+Qué ocurre al variar ε:
+
+- ε a la mitad: los grupos se fragmentan y aumenta el ruido, porque muchos puntos de borde dejan de estar a distancia ε de un núcleo.
+- ε al doble: los grupos se fusionan y disminuye el ruido, porque puntos antes aislados ahora caen dentro del radio de algún núcleo.
+
+Cruce con la zona verdadera
+
+```{r}
+acc$clust_dbs_mitad <- factor(mod_mitad$cluster)
+acc$clust_dbs_doble <- factor(mod_doble$cluster)
+
+tabla_dbs <- table(DBSCAN = acc$clust_dbs, Zona = zona_verdad)
+kable(tabla_dbs, caption = "DBSCAN (ε elegido) vs zona verdadera")
+
+# Proporciones dentro de cada cluster
+prop_dbs <- prop.table(tabla_dbs, margin = 1) * 100
+kable(round(prop_dbs, 1),
+      caption = "% de cada zona verdadera dentro de cada cluster DBSCAN")
+```
+
+---
+
+## 5. Recomendación de selección del metodo
+
+```{r}
+# Comparación final: pureza de cada método sobre la zona verdadera
+pureza <- function(tabla) {
+  # Para cada cluster, % de la clase mayoritaria; luego promedio ponderado
+  max_por_cluster <- apply(tabla, 1, max)
+  sum(max_por_cluster) / sum(tabla)
+}
+
+tibble(
+  Metodo = c("Jerárquico Ward",
+             "Jerárquico Simple",
+             "DBSCAN (ε elegido)"),
+  Pureza = c(
+    pureza(tabla_ward),
+    pureza(tabla_simple),
+    pureza(tabla_dbs)
+  )
+) %>%
+  mutate(Pureza = scales::percent(Pureza, accuracy = 0.1)) %>%
+  kable(caption = "Pureza de cada método frente a la zona verdadera")
+```
+
+> DBSCAN es el método que mejor identifica las tres zonas críticas (avenida en arco, cruce y accidentes aislados) sin forzar formas redondas sobre los datos. La avenida queda como un solo cluster alargado, el cruce como un segundo cluster compacto, y los accidentes aislados quedan marcados como ruido, que es justamente la información valiosa: son casos que merecen revisión individual (¿errores de reporte? ¿zonas nuevas que están empezando a ser peligrosas?).
+>
+> Los métodos jerárquicos, en cambio, o fragmentan la avenida en varios clusters (Ward) o la unen al cruce por efecto de cadena (enlace simple), perdiendo la estructura real del territorio.
+>
+> Se recomienda a la Secretaría:
+> 1. Usar los dos clusters de DBSCAN como zonas de asignación de agentes de tránsito.
+> 2. Revisar manualmente los puntos marcados como ruido para decidir si son errores de digitación o nuevos focos emergentes.
+> 3. Repetir el análisis cada trimestre con los nuevos reportes, ajustando ε si cambia la densidad general de accidentes.
+
+---
+
+# PRÁCTICA 2 — Integrador: municipios + transacciones de cooperativa
+
+##  Datos de municipios (simulados)
+
+Reproducimos la simulación de la Clase 19 (pág. 78): 300 municipios con 5 indicadores.
+
+```{r}
+set.seed(123)
+n <- 300
+
+municipios <- tibble(
+  id_municipio       = sprintf("M%03d", 1:n),
+  cobertura_acueducto = c(rnorm(n/2, 85, 6),  rnorm(n/2, 45, 8)),
+  alcantarillado      = c(rnorm(n/2, 78, 7),  rnorm(n/2, 38, 9)),
+  irca                = c(rnorm(n/2, 14, 5),  rnorm(n/2, 56, 8)),
+  poblacion           = c(rlnorm(n/2, 10.6, 0.6), rlnorm(n/2, 9.0, 0.7)),
+  altitud             = c(rnorm(n/2, 1200, 400),  rnorm(n/2, 600, 300))
+)
+
+cat("Municipios:", nrow(municipios), "\n")
+mostrar_tabla(municipios, caption = "Primeros municipios simulados")
+```
+
+## 1. Estandarizar y comparar Ward vs. K-means (Clase 18b)
+
+Estandarización
+
+```{r}
+vars_num <- c("cobertura_acueducto", "alcantarillado", "irca",
+              "poblacion", "altitud")
+
+X_mun    <- municipios %>% select(all_of(vars_num))
+X_mun_esc <- as.data.frame(scale(X_mun))
+
+# Verificación
+X_mun_esc %>%
+  summarise(across(everything(), list(
+    media = ~round(mean(.), 4),
+    sd    = ~round(sd(.), 4)
+  ))) %>%
+  kable(caption = "Medias y desviaciones estándar tras escalar (≈ 0 y 1)")
+```
+
+todas las variables tienen media ≈ 0 y sd ≈ 1. El escalado es obligatorio porque `poblacion` está en decenas de miles mientras que `cobertura_acueducto` está en porcentaje (0-100). Sin escalar, la distancia euclidiana estaría dominada por `poblacion` y los clusters reflejarían solo el tamaño poblacional.
+
+Jerárquico Ward — dendrograma y elección robusta de K
+
+```{r}
+d_mun    <- dist(X_mun_esc)
+mod_ward <- hclust(d_mun, method = "ward.D2")
+
+plot(mod_ward, hang = -1, main = "Dendrograma Ward — municipios",
+     xlab = "", sub = "", cex = 0.5)
+```
+
+
+- Un salto gigante alrededor de `height ≈ 45`: une los dos macro-grupos principales.
+- Un segundo salto importante alrededor de `height ≈ 14`.
+- A partir de ahí, saltos pequeños entre 0 y 10.
+
+
+```{r}
+# Intento ingenuo (falla igual que en Práctica 1)
+alturas <- sort(mod_ward$height)
+saltos  <- diff(alturas)
+K_naive <- which.max(saltos) + 1
+cat("K ingenuo (salto máximo):", K_naive, "\n")
+```
+
+K = 299: el último salto (que une los dos últimos macro-grupos) es siempre el más grande en valor absoluto.
+
+empleando la misma función `elegir_K_robusto()` definida en la Práctica 1, que excluye el último salto y busca el mayor entre los restantes, restringiendo a K ≤ 6.
+
+```{r}
+# Reutilizamos la función de la Práctica 1
+elegir_K_robusto <- function(mod_hclust, nombre = "", k_max = 6) {
+  alturas <- sort(mod_hclust$height)
+  saltos  <- diff(alturas)
+  # Excluir el último salto (siempre inflado)
+  saltos_recortados <- saltos[-length(saltos)]
+  # Candidatos: índices donde el salto es grande y produce K <= k_max
+  candidatos <- which(saltos_recortados == max(saltos_recortados))
+  k_elegido <- min(candidatos) + 1
+  # Si aún es muy grande, buscar el segundo salto más grande
+  if (k_elegido > k_max) {
+    saltos_ordenados <- order(saltos_recortados, decreasing = TRUE)
+    for (i in seq_along(saltos_ordenados)) {
+      k_cand <- saltos_ordenados[i] + 1
+      if (k_cand <= k_max) {
+        k_elegido <- k_cand
+        break
+      }
+    }
+  }
+  cat(sprintf("K sugerido para %s (método robusto): %d\n", nombre, k_elegido))
+  return(k_elegido)
+}
+
+K_ward <- elegir_K_robusto(mod_ward, "Ward municipios", k_max = 6)
+cat("K sugerido por Ward:", K_ward, "\n")
+
+municipios$clust_ward <- factor(cutree(mod_ward, k = K_ward))
+```
+
+`K_ward = 3`, el dendrograma revela una estructura de tres grupos, no dos como se podría esperar a primera vista.
+
+ K-means con el mismo K
+
+```{r}
+set.seed(2026)
+km_mun <- kmeans(X_mun_esc, centers = K_ward, nstart = 25, iter.max = 100)
+municipios$clust_km <- factor(km_mun$cluster)
+
+# Comparación
+tabla_ward_vs_km <- table(Ward = municipios$clust_ward,
+                          Kmeans = municipios$clust_km)
+kable(tabla_ward_vs_km,
+      caption = "Cruzando clusters de Ward con los de K-means (mismo K)")
+```
+
+
+| Ward \ K-means | 1 | 2 | 3 |
+|---|---|---|---|
+| 1 (143 obs) | 0 | 14 | 129 |
+| 2 (7 obs) | 0 | 7 | 0 |
+| 3 (150 obs) | 150 | 0 | 0 |
+
+- El cluster 3 de Ward (150 municipios deficientes) coincide perfectamente con el cluster 1 de K-means.
+- El cluster 2 de Ward (7 municipios grandes) coincide perfectamente con el cluster 2 de K-means.
+- El cluster 1 de Ward (143 municipios buenos "normales") se fragmenta en K-means: 129 van al cluster 3 y 14 se "escapan" al cluster 2 (el de los grandes).
+
+¿Por qué ocurre esta diferencia? 
+
+K-means asume clusters esféricos y de tamaño similar. Al forzar K=3, el algoritmo intenta equilibrar las varianzas intra-cluster: el cluster de 7 municipios es muy pequeño comparado con 143 y 150, así que K-means "roba" 14 municipios del grupo grande de buenos para engrosar el cluster de los grandes. Ward, en cambio, respeta la estructura jerárquica natural y no fuerza tamaños similares.
+
+```{r}
+# Índice de ajuste ajustado (ARI)
+ari <- adjustedRandIndex(municipios$clust_ward, municipios$clust_km)
+cat("ARI Ward vs K-means:", round(ari, 3), "\n")
+```
+
+concordancia muy alta pero no perfecta. La diferencia (≈ 8.5%) corresponde exactamente a los 14 municipios que K-means reasigna.
+
+Perfil de los clusters Ward:
+
+```{r}
+perfil_ward <- municipios %>%
+  group_by(clust_ward) %>%
+  summarise(across(all_of(vars_num), ~round(mean(.), 2)),
+            n = n(), .groups = "drop")
+kable(perfil_ward, caption = "Perfil de cada cluster (Ward) en unidades originales")
+```
+
+Interpretación de los tres clusters:
+
+| Cluster | n | Perfil | Interpretación |
+|---|---|---|---|
+| 1 | 143 | Cob ~85%, Alc ~77%, IRCA ~14, Pob ~44k, Alt ~1171 | Municipios "buenos" típicos: servicios decentes, tamaño medio, altitud media-alta. |
+| 2 | 7 | Cob ~83%, Alc ~83%, IRCA ~14, Pob ~184k, Alt ~1304 | Municipios "buenos pero muy grandes": mismos servicios que el cluster 1, pero 4× más población. Son atípicos por tamaño, no por calidad. |
+| 3 | 150 | Cob ~46%, Alc ~39%, IRCA ~56, Pob ~10k, Alt ~623 | Municipios "deficientes": servicios bajos, IRCA alto (agua no potable), población pequeña, altitud baja. Requieren intervención prioritaria. |
+
+La simulación no generó dos nubes simétricas, sino dos nubes principales + un subgrupo pequeño de municipios grandes dentro de los buenos. Ward los detecta; K-means los mezcla parcialmente.
+
+---
+
+## 2. DBSCAN sobre municipios
+
+Gráfico de k-distancias
+
+```{r}
+minPts_mun <- 6   # regla práctica: dim + 1 = 5 + 1
+
+# Gráfico de k-distancias (k = minPts_mun - 1 = 5)
+dbscan::kNNdistplot(X_mun_esc, k = minPts_mun - 1)
+title(main = "k-distancias — municipios (k = 5)")
+abline(h = 1.2, lty = 2, col = "red")
+```
+
+DBSCAN con ε 1.2
+
+```{r}
+eps_mun <- 1.2
+mod_dbs_mun <- dbscan(X_mun_esc, eps = eps_mun, minPts = minPts_mun)
+
+municipios$clust_dbs <- factor(mod_dbs_mun$cluster)
+
+cat("ε:          ", eps_mun, "\n")
+cat("Clusters:   ", max(mod_dbs_mun$cluster), "\n")
+cat("Ruido:      ", sum(mod_dbs_mun$cluster == 0), "municipios\n")
+```
+
+DBSCAN encuentra 3 clusters (como Ward) pero además marca 3 municipios como ruido.
+
+¿Qué tienen en común los 3 municipios ruido?
+
+```{r}
+ruido_dbs <- municipios %>% filter(clust_dbs == "0")
+kable(ruido_dbs %>% select(id_municipio, clust_ward, clust_dbs,
+                           cobertura_acueducto, alcantarillado, irca, poblacion, altitud) %>%
+        mutate(across(where(is.numeric), ~round(., 2))),
+      caption = "Los 3 municipios marcados como ruido por DBSCAN")
+```
+
+los municipios ruido tienen combinaciones inusuales de indicadores. No encajan bien en ninguna de las tres densidades locales identificadas.
+
+Comparación con Ward:
+
+- Ward fuerza a los 300 municipios en 3 grupos, incluso si algunos no encajan bien.
+- DBSCAN respeta la densidad real y deja "fuera" a los atípicos. Esto es valioso: los 3 municipios ruido merecen revisión manual individual.
+
+---
+
+## 3. Reglas de asociación (transacciones de cooperativa)
+
+Como el dataset de transacciones no se suministró, simulamos una canasta razonable de una cooperativa con 10 productos y 500 transacciones.
+
+Simulación de transacciones:
+
+```{r}
+# 1. Simulación de transacciones (500 transacciones x 10 productos)
+set.seed(2026)
+
+productos <- c("ahorros", "cdt", "credito", "seguro_vida",
+               "seguro_hogar", "tarjeta", "sociedad",
+               "educacion", "vivienda", "recreacion")
+
+n_trans <- 500L
+
+p_base <- c(0.55, 0.20, 0.45, 0.30, 0.25,
+            0.50, 0.15, 0.10, 0.12, 0.22)
+names(p_base) <- productos
+
+mat <- matrix(0L, nrow = n_trans, ncol = length(productos))
+colnames(mat) <- productos
+
+for (i in seq_len(n_trans)) {
+  p <- p_base
+
+  # Regla 1: credito -> tarjeta sube a 0.85
+  if (mat[i, "credito"] == 0L && runif(1) < p[["credito"]]) {
+    mat[i, "credito"] <- 1L
+  }
+  if (mat[i, "credito"] == 1L) {
+    p[["tarjeta"]] <- 0.85
+  }
+
+  # Regla 2: seguro_vida -> seguro_hogar sube a 0.75
+  if (mat[i, "seguro_vida"] == 0L && runif(1) < p[["seguro_vida"]]) {
+    mat[i, "seguro_vida"] <- 1L
+  }
+  if (mat[i, "seguro_vida"] == 1L) {
+    p[["seguro_hogar"]] <- 0.75
+  }
+
+  # Regla 3: ahorros -> cdt sube a 0.70
+  if (mat[i, "ahorros"] == 0L && runif(1) < p[["ahorros"]]) {
+    mat[i, "ahorros"] <- 1L
+  }
+  if (mat[i, "ahorros"] == 1L) {
+    p[["cdt"]] <- 0.70
+  }
+
+  # Asignar el resto de productos con las probabilidades condicionales vigentes
+  for (j in seq_along(productos)) {
+    if (mat[i, j] == 0L && runif(1) < p[[j]]) {
+      mat[i, j] <- 1L
+    }
+  }
+}
+
+stopifnot(!anyNA(mat))
+
+id_vec <- sprintf("T%04d", seq_len(n_trans))
+transacciones <- tibble::tibble(
+  id_transaccion = id_vec,
+  tibble::as_tibble(mat)
+)
+
+# 2. Formato largo (conservando filas con ítems presentes)
+trans_largo <- transacciones %>%
+  pivot_longer(
+    cols      = all_of(productos),
+    names_to  = "item",
+    values_to = "presente"
+  ) %>%
+  filter(presente == 1L) %>%
+  select(id_transaccion, item)
+
+cat("Transacciones con al menos 1 ítem:", n_distinct(trans_largo$id_transaccion), "\n")
+cat("Filas (transacción, ítem):", nrow(trans_largo), "\n")
+```
+
+ Apriori con soporte ≥ 0.05 y confianza ≥ 0.5
+
+```{r}
+# 3. Conversión a objeto 'transactions' de arules desde formato largo
+lista_items <- split(trans_largo$item, trans_largo$id_transaccion)
+trans_obj   <- as(lista_items, "transactions")
+
+summary(trans_obj)
+
+# 4. Algoritmo Apriori (soporte >= 0.05, confianza >= 0.5, longitud >= 2)
+reglas <- apriori(
+  trans_obj,
+  parameter = list(supp = 0.05, conf = 0.5, minlen = 2)
+)
+
+cat("Reglas generadas:", length(reglas), "\n")
+inspect(head(sort(reglas, by = "lift"), 10))
+```
+
+ Top 5 reglas por lift
+
+```{r}
+reglas_top <- sort(reglas, by = "lift", decreasing = TRUE)
+top5 <- head(reglas_top, 5)
+
+# Convertir a data frame para visualizar
+top5_df <- data.frame(
+  regla      = labels(top5),
+  soporte    = quality(top5)$support,
+  confianza  = quality(top5)$confidence,
+  lift       = quality(top5)$lift
+)
+
+kable(top5_df %>% mutate(across(where(is.numeric), ~round(., 3))),
+      caption = "Top 5 reglas de asociación por lift")
+```
+
+Interpretación para la cooperativa:
+
+1. `recreacion` aparece en 4 de las 5 reglas top: esto sugiere que los afiliados que contratan recreación tienden a tener un perfil de consumo más diversificado, especialmente en seguros.
+
+2. Reglas tipo `{recreacion, seguro_vida, tarjeta} ⇒ {seguro_hogar}` con lift = 1.82: los afiliados que tienen recreación, seguro de vida y tarjeta tienen 82% más probabilidad de tener seguro de hogar que el promedio. Candidatas a campañas cruzadas.
+
+3. Reglas tipo `{credito, recreacion, seguro_vida} ⇒ {seguro_hogar}` con lift = 1.80: similar al anterior, pero con crédito en lugar de tarjeta.
+
+4. Las reglas son de 3-4 items en el antecedente: esto indica que las asociaciones fuertes requieren combinaciones específicas, no productos individuales. La cooperativa debería diseñar combos de 3-4 productos, no promociones de 2 productos.
+
+5. Todas las reglas tienen lift > 1.4: confirman asociaciones reales, no casuales.
+
+---
+
+## 4. Isolation Forest vs. ruido de DBSCAN
+
+ Isolation Forest sobre los indicadores
+
+```{r}
+iso <- isolationForest$new()
+iso$fit(X_mun_esc)
+scores <- iso$predict(X_mun_esc)$anomaly_score
+
+municipios$score_iso <- scores
+
+# Resumen
+municipios %>%
+  summarise(
+    media_score = round(mean(score_iso), 3),
+    sd_score    = round(sd(score_iso), 3),
+    max_score   = round(max(score_iso), 3),
+    min_score   = round(min(score_iso), 3)
+  ) %>%
+  kable(caption = "Estadísticos del puntaje de Isolation Forest")
+```
+
+los scores están muy concentrados (0.582-0.712), con desviación estándar de solo 0.017. Esto es normal en Isolation Forest: el algoritmo asigna scores cercanos a 0.5 para puntos "normales" y cercanos a 1 para anomalías claras. La pequeña variación indica que no hay anomalías extremas en este dataset (todos los municipios tienen perfiles relativamente coherentes).
+
+ ¿Coinciden los municipios-ruido de DBSCAN con los de mayor score?
+
+```{r}
+municipios %>%
+  group_by(es_ruido_dbs = (clust_dbs == "0")) %>%
+  summarise(
+    n             = n(),
+    score_iso_med = round(mean(score_iso), 3),
+    score_iso_max = round(max(score_iso), 3),
+    .groups = "drop"
+  ) %>%
+  kable(caption = "Puntaje Isolation Forest según DBSCAN marque ruido o no")
+```
+los 3 municipios ruido de DBSCAN tienen score_iso_med = 0.669 vs 0.590 de los no-ruido. La diferencia es de ~13%, lo cual sugiere evidencia convergente: los municipios que DBSCAN marca como ruido también son considerados atípicos por Isolation Forest.
+
+
+```{r}
+# Top 10 municipios más anómalos según Isolation Forest
+top10_iso <- municipios %>%
+  arrange(desc(score_iso)) %>%
+  slice_head(n = 10) %>%
+  select(id_municipio, clust_dbs, score_iso,
+         cobertura_acueducto, alcantarillado, irca, poblacion, altitud)
+
+kable(top10_iso %>% mutate(across(where(is.numeric), ~round(., 2))),
+      caption = "Top 10 municipios más anómalos (Isolation Forest)")
+```
+
+Análisis cruzado: cluster Ward vs. anomalía
+
+```{r}
+municipios %>%
+  group_by(clust_ward) %>%
+  summarise(
+    n             = n(),
+    score_iso_med = round(mean(score_iso), 3),
+    score_iso_max = round(max(score_iso), 3),
+    n_ruido_dbs   = sum(clust_dbs == "0"),
+    .groups = "drop"
+  ) %>%
+  kable(caption = "Anomalía por cluster de Ward")
+```
+
+
+Lectura:
+
+- Cluster 2 de Ward (7 municipios grandes) debería tener el puntaje de anomalía más alto en promedio, porque son atípicos por tamaño dentro del grupo de buenos.
+- Clusters 1 y 3 deberían tener puntajes más bajos, porque son grupos densos y homogéneos.
+- Si DBSCAN marca como ruido principalmente municipios del cluster 2 de Ward, tenemos evidencia convergente de que esos municipios son genuinamente atípicos.
+
+Recomendación práctica para la autoridad ambiental:
+
+1. Cluster 3 (150 municipios deficientes): intervención masiva y prioritaria. Son la mitad del país y tienen servicios críticos bajos.
+2. Cluster 1 (143 municipios buenos típicos): mantenimiento y monitoreo rutinario.
+3. Cluster 2 (7 municipios grandes): requieren estrategia específica. Tienen servicios decentes pero su tamaño poblacional (~184k vs ~44k del cluster 1) implica que cualquier falla en servicios afecta a mucha más gente. No son "anómalos" en el sentido negativo, sino prioritarios por escala.
+4. Municipios ruido de DBSCAN con score ISO alto (3 municipios): revisión caso por caso. Pueden ser errores de captura o municipios con combinaciones inusuales que merecen diagnóstico individual.
+
+
+---
+
+# 5. Conclusiones generales
+
+1. DBSCAN supera a los jerárquicos cuando los grupos tienen formas irregulares (como la avenida en arco) y cuando existen puntos aislados que conviene marcar explícitamente como ruido. En municipios, DBSCAN encuentra la misma estructura de 3 clusters que Ward pero además identifica 3 municipios atípicos.
+
+2. Jerárquico Ward con K=3 revela una estructura más rica que la esperada: no son dos nubes simétricas (buenos vs. deficientes), sino dos nubes principales más un subgrupo pequeño de 7 municipios grandes dentro de los buenos. K-means con K=3 mezcla parcialmente esta estructura porque asume clusters esféricos de tamaño similar.
+
+3. Reglas de asociación (Apriori) permiten descubrir combinaciones de productos/servicios que aparecen juntos más de lo esperado por azar. El análisis revela que `recreacion` es un producto "puente" que conecta con seguros, y que las asociaciones fuertes requieren combos de 3-4 productos.
+
+4. Isolation Forest y DBSCAN (ruido) son enfoques complementarios de detección de anomalías: los 3 municipios ruido de DBSCAN tienen scores de anomalía 13% más altos que el promedio, lo cual confirma evidencia convergente.
+
+5. En todo el taller se respetó el flujo KDD: no se modeló sin antes escalar, no se eligió ε a ojo (se usó el gráfico de k-distancias), y no se tomó el resultado como verdad absoluta (se cruzó con la etiqueta simulada y con un segundo método de anomalías).
+
