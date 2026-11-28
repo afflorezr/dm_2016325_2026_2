@@ -1,0 +1,11 @@
+# Carpetas y archivos de datos/diagnóstico
+diagnostico/
+datos/
+*.rds
+*_reproc.sqlite
+
+# Archivos de entorno y sesión de R/RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata

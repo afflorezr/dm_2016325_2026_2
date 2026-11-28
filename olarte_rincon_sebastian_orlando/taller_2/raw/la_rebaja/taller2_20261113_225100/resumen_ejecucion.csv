@@ -1,0 +1,2 @@
+ejecucion_id,comercio,fecha_hora_inicio,fecha_hora_fin,modo,productos_reportados_sitio,registros_formula,registros_piel,registros_obtenidos,precios_encontrados,precios_faltantes,estado
+taller2_20261113_225100,La Rebaja,2026-11-13T23:04:15-05:00,2026-11-13T23:07:08-05:00,online,2570,2570,31,2601,2601,0,completa

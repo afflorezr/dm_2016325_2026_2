@@ -1,0 +1,21 @@
+# Credenciales (Modulo 4): nunca se commitean
+.Renviron
+.Renviron.local
+secrets.toml
+.streamlit/secrets.toml
+
+# R / renv
+.Rhistory
+.RData
+.Rproj.user
+renv/library/
+renv/local/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+# Artefactos
+*.log
+*.Rproj
+comparables.csv
+raw/**/*.zip

@@ -1,0 +1,188 @@
+/* =============================================================================
+   custom.css  -  Ajustes de presentacion (Modulo 5)
+   Compacta la interfaz para usarse con zoom normal (100%): tipografia
+   contenida, value_box sin iconos sobredimensionados, tablas densas.
+   ========================================================================== */
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  font-size: 0.925rem;
+}
+
+/* ---------------------------------------------------------------- encabezado */
+.navbar {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+.navbar .navbar-brand {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.app-title .badge {
+  font-size: 0.72rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+/* ------------------------------------------------------------- panel lateral */
+.bslib-sidebar,
+aside.sidebar {
+  overflow-x: hidden;
+}
+.sidebar-content,
+.bslib-sidebar-contents {
+  padding: 0.9rem !important;
+  font-size: 0.88rem;
+  overflow-x: hidden;
+}
+.sidebar-content .form-label, .bslib-sidebar-contents .form-label,
+.sidebar-content label, .bslib-sidebar-contents label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0.15rem;
+}
+.sidebar-content .form-control, .bslib-sidebar-contents .form-control,
+.sidebar-content .form-select, .bslib-sidebar-contents .form-select,
+.sidebar-content .selectize-input, .bslib-sidebar-contents .selectize-input {
+  font-size: 0.86rem;
+  padding: 0.3rem 0.55rem;
+}
+.sidebar-content .btn, .bslib-sidebar-contents .btn {
+  font-size: 0.86rem;
+}
+.accordion-item {
+  border: none;
+}
+.accordion-button {
+  padding: 0.55rem 0.25rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.accordion-button:not(.collapsed) {
+  box-shadow: none;
+}
+.accordion-body {
+  padding: 0.65rem 0.25rem 0.25rem;
+}
+.help-block,
+.form-text {
+  font-size: 0.74rem;
+}
+input[type="checkbox"] {
+  accent-color: #0071CE;
+}
+
+/* --------------------------------------------- value boxes (indicadores KPI) */
+.bslib-value-box .card-body {
+  padding: 0.85rem 1rem !important;
+}
+.bslib-value-box .value-box-showcase {
+  padding: 0.5rem !important;
+}
+.bslib-value-box .value-box-showcase .fa,
+.bslib-value-box .value-box-showcase .fas,
+.bslib-value-box .value-box-showcase .fab,
+.bslib-value-box .value-box-showcase .far,
+.bslib-value-box .value-box-showcase .bi {
+  font-size: 2.25rem !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+.value-box-title {
+  font-size: 0.72rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.1rem !important;
+  min-height: 2.1em;
+}
+.value-box-value {
+  font-size: 1.55rem !important;
+  line-height: 1.15 !important;
+  margin-bottom: 0.15rem !important;
+}
+.bslib-value-box .small {
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+/* ------------------------------------------------------------------ tarjetas */
+.bslib-card .card-header {
+  font-size: 0.93rem;
+  font-weight: 600;
+  padding: 0.55rem 0.95rem;
+}
+.bslib-card .card-body {
+  padding: 0.85rem 0.95rem;
+}
+.bslib-card .card-footer {
+  font-size: 0.78rem;
+  padding: 0.45rem 0.95rem;
+  background: #fff;
+}
+
+/* Inventario de scrapers (panel Actualizar precios) */
+.scrapers-box {
+  border: 1px solid #e9ecef;
+  border-radius: 0.4rem;
+  padding: 0.55rem 0.7rem;
+  background: #f8f9fa;
+}
+.dot-comercio {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* Mini estadisticas (subidas / bajadas / totales) */
+.stat-num {
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ------------------------------------------- tablas DT y renderTable: densas */
+.dataTables_wrapper {
+  font-size: 0.84rem;
+}
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.55rem;
+}
+.dataTables_wrapper .dataTables_filter input {
+  font-size: 0.84rem;
+  padding: 0.2rem 0.45rem;
+  margin-left: 0.35rem;
+}
+table.dataTable {
+  font-size: 0.84rem;
+  margin-bottom: 0 !important;
+}
+table.table {
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}
+
+/* -------------------------------------------------------------------- pestas */
+.nav-tabs .nav-link {
+  font-size: 0.95rem;
+  padding: 0.55rem 1.15rem;
+}
+.nav-tabs .nav-link i {
+  opacity: 0.8;
+  margin-right: 0.3rem;
+}
+
+/* ------------------------------------------------------------------- botones */
+.btn {
+  font-size: 0.88rem;
+}
+#descargar_csv {
+  font-size: 0.82rem;
+}

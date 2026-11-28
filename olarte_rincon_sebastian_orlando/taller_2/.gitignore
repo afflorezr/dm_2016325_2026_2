@@ -1,0 +1,31 @@
+# Credenciales y secretos
+.Renviron
+.Renviron.*
+.env
+.env.*
+# Archivos locales de RStudio
+.Rhistory
+.RData
+.Rproj.user/
+# Entornos y paquetes
+renv/library/
+renv/staging/
+# Copias de seguridad
+backups/
+*respaldo*.sqlite
+# Archivos temporales SQLite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+# Versiones anteriores de la aplicacion
+app_anterior.R
+app_visual.R
+app_respaldo_*.R
+
+# Archivos auxiliares no incluidos en la entrega
+Taller2_mejoras_integradas.zip
+app_modulo2_shiny.R
+app_modulo3_cache.R
+app_modulo3_corregida.R
+app_modulo6_canasta.R
+rsconnect/

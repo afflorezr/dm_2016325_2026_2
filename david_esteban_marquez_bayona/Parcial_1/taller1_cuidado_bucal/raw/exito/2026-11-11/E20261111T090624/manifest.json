@@ -1,0 +1,26 @@
+{
+ "ejecucion_id": "E20261111T090624",
+ "comercio_id": "exito",
+ "comercio": "Éxito",
+ "url_base": "https://www.exito.com",
+ "inicio": "2026-11-11T09:06:27-05:00",
+ "fin": "2026-11-11T09:06:27-05:00",
+ "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 TallerMineriaDatosUNAL/1.0 (uso academico)",
+ "secciones": [],
+ "peticiones": [
+  {
+   "archivo": "0000_arbol.json.gz",
+   "tipo": "arbol",
+   "seccion_id": null,
+   "url": "https://www.exito.com/api/catalog_system/pub/category/tree/4",
+   "params": null,
+   "fecha_hora_consulta": "2026-11-11T09:06:27-05:00",
+   "status": 403,
+   "resources": null,
+   "bytes": 5955
+  }
+ ],
+ "errores": [
+  "general: 403 Client Error: Forbidden for url: https://www.exito.com/api/catalog_system/pub/category/tree/4"
+ ]
+}

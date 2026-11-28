@@ -1,0 +1,26 @@
+PAQUETE FINAL TALLER 2 — INSTALACIÓN SEGURA
+
+1. DETÉN la aplicación Shiny en RStudio (Stop).
+2. Descarga el ZIP. Guárdalo dentro de la carpeta taller_2.
+3. Ejecuta ESTO en la consola de RStudio (ajusta nombre si cambió):
+
+  dir.create('backups', showWarnings=FALSE)
+  fecha <- format(Sys.time(), '%Y%m%d_%H%M%S')
+  stopifnot(file.copy('app.R', file.path('backups', paste0('app_',fecha,'.R'))))
+  stopifnot(file.copy('db.R', file.path('backups', paste0('db_',fecha,'.R'))))
+  unzip('Taller2_mejoras_integradas.zip', exdir='.', overwrite=TRUE)
+  invisible(parse(file='app.R'))
+  invisible(parse(file='db.R'))
+  cat('INSTALADO. No se reemplazó SQLite ni raw/.\n')
+  source('verificar_entrega.R', encoding='UTF-8')
+  source('actualizar_dependencias.R', encoding='UTF-8')
+  source('ejecutar_pruebas.R', encoding='UTF-8')
+  shiny::runApp('.', launch.browser=TRUE)
+
+4. Probar pestaña CAMBIOS DE PRECIO con capturas Octubre/Nov y umbral 10%.
+5. Probar CATÁLOGO: presentación, precio unitario, filtro y CSV.
+6. Actualización: usar primero modo OFFLINE.
+7. Una vez tests y app funcionen: configurar rsconnect y publicar; actualizar README con URL; hacer PR.
+
+Los scripts no contienen los datos privados ni las credenciales.
+No afirmar que la entrega está publicada hasta comprobar el enlace.

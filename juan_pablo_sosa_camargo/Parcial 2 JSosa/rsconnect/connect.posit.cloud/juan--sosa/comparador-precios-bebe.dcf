@@ -1,0 +1,10 @@
+name: comparador-precios-bebe
+title:
+username: juan--sosa
+account: juan--sosa
+server: connect.posit.cloud
+hostUrl: https://api.connect.posit.cloud/v1
+appId: 01a1c6f3-9789-9ff1-8cca-85adf527ca4f
+bundleId:
+url: https://connect.posit.cloud/juan--sosa/content/01a1c6f3-9789-9ff1-8cca-85adf527ca4f
+version: 1

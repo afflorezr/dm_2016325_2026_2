@@ -1,0 +1,10 @@
+# [CAMBIO]: archivos que no se suben al repositorio del curso (Taller 2).
+# Entorno virtual y cachés de Python / pytest
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Credenciales de Streamlit (§6: ninguna credencial en el repositorio)
+.streamlit/secrets.toml
+# Archivos del sistema
+.DS_Store

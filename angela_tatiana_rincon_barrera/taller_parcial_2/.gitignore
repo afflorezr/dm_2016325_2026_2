@@ -1,0 +1,15 @@
+# Entorno y cachés
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Credenciales: nunca se suben al repositorio
+.streamlit/secrets.toml
+.env
+
+# Archivos temporales de SQLite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal

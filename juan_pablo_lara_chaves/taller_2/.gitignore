@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Rdata
+.httr-oauth
+rsconnect/
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+renv/library/
+renv/staging/
+renv/local/

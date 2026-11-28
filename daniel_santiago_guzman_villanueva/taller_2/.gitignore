@@ -1,0 +1,10 @@
+# Credenciales y archivos locales: nunca al repositorio
+.Renviron
+.Rhistory
+.RData
+.Rproj.user/
+rsconnect/
+# Bibliotecas locales de renv (se reconstruyen con renv::restore())
+renv/library/
+renv/staging/
+renv/local/

@@ -1,0 +1,32 @@
+{
+  "ejecucion_id": "EXEC_20261116_025839_e80b52_OLÍMPICA",
+  "fecha_hora_captura": "2026-11-16T03:00:52-05:00",
+  "total_sitio": 1757,
+  "total_obtenido_bruto": 1751,
+  "subcategorias": {
+    "cuidado-de-la-ropa": {
+      "url": "https://www.olimpica.com/api/catalog_system/pub/products/search/supermercado/aseo-del-hogar/cuidado-de-la-ropa",
+      "total_sitio": 430,
+      "items_obtenidos": 430,
+      "timestamp": "2026-11-16T02:59:01-05:00"
+    },
+    "cuidado-de-superficies": {
+      "url": "https://www.olimpica.com/api/catalog_system/pub/products/search/supermercado/aseo-del-hogar/cuidado-de-superficies",
+      "total_sitio": 751,
+      "items_obtenidos": 751,
+      "timestamp": "2026-11-16T02:59:45-05:00"
+    },
+    "utensilios-de-limpieza": {
+      "url": "https://www.olimpica.com/api/catalog_system/pub/products/search/supermercado/aseo-del-hogar/utensilios-de-limpieza",
+      "total_sitio": 391,
+      "items_obtenidos": 391,
+      "timestamp": "2026-11-16T03:00:34-05:00"
+    },
+    "desechables": {
+      "url": "https://www.olimpica.com/api/catalog_system/pub/products/search/supermercado/aseo-del-hogar/desechables",
+      "total_sitio": 185,
+      "items_obtenidos": 185,
+      "timestamp": "2026-11-16T03:00:45-05:00"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+.Renviron
+.Rhistory
+.RData
+.Rproj.user/
+rsconnect/
+renv/library/
+renv/local/
+renv/staging/
+comparador_precios_test.sqlite
+raw/test/
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+README.html

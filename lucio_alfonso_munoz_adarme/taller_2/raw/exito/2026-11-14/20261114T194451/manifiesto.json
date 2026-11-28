@@ -1,0 +1,9 @@
+{
+  "comercio": "Exito",
+  "id_ejecucion": "20261114T194451",
+  "carpeta": "raw/exito/2026-11-14/20261114T194451",
+  "fecha_consulta": "2026-11-14T19:44:51-05:00",
+  "fecha_fin": "2026-11-14T19:44:52-05:00",
+  "estado": "fallida",
+  "motivo": "el sitio rechazó la consulta (HTTP 403); el sitio bloquea las consultas automáticas"
+}

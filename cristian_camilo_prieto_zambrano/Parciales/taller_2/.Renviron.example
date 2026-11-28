@@ -1,0 +1,19 @@
+# Plantilla de variables de entorno del comparador de precios.
+#
+# Copie este archivo con el nombre .Renviron en la carpeta taller_2 y complete
+# el valor. .Renviron está en .gitignore: nunca se sube al repositorio.
+# R lo lee al iniciar la sesión; si lo crea con la sesión abierta, reinicie R
+# (Session > Restart R).
+#
+# FARMATODO_ALGOLIA_KEY
+#   Clave pública de solo búsqueda que el sitio de Farmatodo usa para consultar
+#   su buscador (Algolia). El sitio la entrega a todos sus visitantes; no es una
+#   contraseña. Solo se necesita para recolectar Farmatodo en línea; el modo
+#   sin conexión no la usa.
+#   Cómo obtenerla:
+#     1. Abra https://www.farmatodo.com.co/categorias/bienestar-y-nutricion-deportiva/nutricion
+#     2. Abra las herramientas de desarrollador del navegador (F12), pestaña Red.
+#     3. Filtre por "algolia" y recargue la página.
+#     4. En cualquier consulta a *.algolia.net, copie el valor de
+#        x-algolia-api-key (está en los encabezados o en la URL).
+FARMATODO_ALGOLIA_KEY=

@@ -1,0 +1,329 @@
+{
+ "comercio": "cafam",
+ "secciones": [
+  {
+   "fq": "/salud-y-medicamentos/bienestar-natural",
+   "filtro": [],
+   "nombre": "Bienestar natural",
+   "total_reportado": 138,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/cuidado-de-los-ojos",
+   "filtro": [],
+   "nombre": "Cuidado de los ojos",
+   "total_reportado": 117,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/cuidado-respiratorio",
+   "filtro": [],
+   "nombre": "Cuidado respiratorio",
+   "total_reportado": 297,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/dermatologicos",
+   "filtro": [],
+   "nombre": "Dermatológicos",
+   "total_reportado": 58,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/dolor-y-malestar",
+   "filtro": [],
+   "nombre": "Dolor y malestar",
+   "total_reportado": 196,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/equipos-medicos",
+   "filtro": [],
+   "nombre": "Equipos médicos",
+   "total_reportado": 101,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/estomago-y-digestion",
+   "filtro": [],
+   "nombre": "Estómago y digestión",
+   "total_reportado": 186,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/mk/genfar/ecar/alerfast",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 1 de 15]",
+   "total_reportado": 500,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/ag/la-sante/colmed/memphis/sandoz/eutirox/synthroid/prolevo/tecnoquimicas-s-a-/altadis-farmaceutica-sas/amoxidal/deferol/exforge/novamed/galvus/iltuxam/irbeprex/janumet/laproff/lyrica/tiroxin/betarretin/cialis/colypan/decadron/deslodex/diovan/doliren/durax/glucophage/klaricid/micardis/nedox/olmetec/roemmers/seretide/varteral/baten/candeprex/desonida/esomed/farma/flexure/lamictal/mirapex/muvett/bactrim",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 2 de 15]",
+   "total_reportado": 500,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/pramixole/symbicort/vitalis/wegovy/zudenina/betazol/brasartan/brocriptin/cetirax/concor/cromus/dicetel/doxu/eli-lilly/enitrax/ericox/eroxim/ezolium/garmisch/herrex/invictus/jardiance/lansopep/lipitor/medicbrand/momenta/nexium/normolip/novamed-sas/nuevid/pradaxa/rovaril/satoren/sinalgen/singulair/tadet/valcote/winadeine/xarelto/zolof/airomed/algimide/amoxal/amoxiclin/anemidox/apitena/aprovasc/aramax/arcoxia/atak/b-vit/bedoyecta/betaduo/betaloc/betaserc/bilaxten/blankisima/brintellix/broncho/candam/cardik/cardio-metabolica/cardiocap/cardiomax/clavulin/clavutec/clobezan/corbis/coveratrix/cozaar/crestor/dabix/dakmired/davintex/dermacortine/dermosupril/dermovate/dip/dismigras/doloff",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 3 de 15]",
+   "total_reportado": 285,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/dominium/eclosynt/eliquis/entresto/esoprax/etox/exelon/facetix/galenicumvitae/geslutin/gynoflor/healthy-america/hyzaar/ibone/ifaxim/januvia/keflex/keppra/lacotem/lukast/lurazic/medrol/metarsal/microgynon/minart/mixel/myecort/myrbetric/nabila/neurobion/neviot/niflamin/nulytely/nytax/omnidol/pharmalab/progendo/recipe/remeron/rex/rifamed/rifax/rosuvax/rosuvitae/rotavin/roxicaina/rybelsus/salofalk/segregam/sertal/siegfried/stafen/stalevo/terovan/tetralysal/tobradex/topamac/tractal/travad/trigentax/trileptal/truxa/unasyn/valsarvitae/valtan/varoxred/veroniq/viagra/virex/zitromax/adimod/adorlan/aerovial/albisec/aldactone/aldomet/alenat/alevian/aliprid/allegra",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 4 de 15]",
+   "total_reportado": 230,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/alsucral/amaryl/amdipin/anexia/apidra/aprix-f/apronax/aprovel/aranda/arcalion/artrodar/atacand/attentho/aulen-pharma-s--a/b-cort/baxter/baycuten/bellaface/bemerin/bexon/bonac/bromux/broncochem/bruliva/cardioaspirina/cardiol/carduran/casacine/celebrex/celectan/cigram/cilostal/cimoxen/clortax/codefen/coltrim/combigan/complegel/contractubex/cortioftal/coversyl/creon/cuait/curam/daflon/deblax/delifon/depakene/depo/desfatigan/desler/detrusitol/dexapron/dexilant/dexketovitae/dexopral/diabetrics/dicasen/dietrex/dilox/dimard/dimoflax/dispax/doloro/domperix/dorixina-relax/dorzolam/dorzolol/dostinex/drospera/drugtech/durafex/duspatalin/efexor/enema/epapure/epax/epiduo/eptavis/escilom",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 5 de 15]",
+   "total_reportado": 160,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/escitavitae/esomeprazol/espasmobil/etorimed/etura/ezator/fenalgex/fencafen/fenovas/ferrimed/firialta/fixamicin/fleximax/flextril/flixotide/flumixol/fluzina/folister/fraxiparine/fucidin/fuzolpauly/g-met/gelpin/genfar-s-a-/gestageno/glyxambi/goutex/gynorelle/hidrocofen/hidroten/histivert/humax/ilimit/iloticina/iltux/iltux-hct/inflacor/inmox/inspra/iruxol/isoface/isperin/itrol/kaptin/kazide/ketesse/koact/komency/krytantek/labinco/lacoryl/lactulax/legabine-cr/legrand/leprit/levotrex/lexapro/lidomax/lioton/lipogras/lipomega/lipotic/lokelma/lomexin/lopid/lumbal/luvox/mantixa/melcox/metaspray/meteospasmyl/metglital/metrozin/mirtapax/mirtazapina-humax/moltoben/motrin/moviart/moxar/moxis",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 6 de 15]",
+   "total_reportado": 160,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/mutum/muxol/naire/naprozol/naramig/nasivin/neo-veins/neo-zentius/neosaldina/neubalin/neurontin/nortricol/norvas/novalgina/noxpirin/ocam/oftaflox/oftamox/oftaprednol/olmedoxtan-a/oloftal/omnic/orazole/otosec/oxifled/ozempic/pantocal/paralgen/pepred/periactin/pexivan/plasil/pristiq/procaps/prolertus/provera/puroxan/pynazer/quanox/quifarma/refluyet/relvar/retiblan/rifaxigal/riscol/rogastril/rosufen/rosuvina/rustatina/salagen/segufem/seroxat/sirdalud/sisprad/skudexa/soliplex/sophixin/stopen/strozoven/sulamp/synovular/tadavitae/talysto/tamsulon/tegretol/tensofar/tiocolsid/tobraoftal/topictal/tramal/trazidex/tretinex/trittico/tromix/uroflav/urofos/valclomed/valtrois/vaxiduo/vedipal",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 7 de 15]",
+   "total_reportado": 160,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/ventilan/verum/vesicare/vigia/wassertrol/wellbutrin/xaroban/xigduo/z-full/zalain/zaldiar/zaledor-p/zelix/ziac/zyloprim/2d-dermatology/5-fluorouracil/acemuk/aceoto/acidrine/acix/acrylarm/actionflu/activa/actonel/acular/adapclin/adapgel/afrin/agglad/alactin/alap/alcon/alencal/alercet/alergus/alermed/alernit/androgel/anemikids/angeliq/anime-avanafil/ankermann/anoro/antiss/antrofi/aprix/arava/arimidex/arivitae/arluy/astonin/atergit/atrovent/avamys/avelox/avodart/azarga/azec/azeflu/azibiotrim/bacterol/bactrosafe/beclazone/belara/belarina/bellanew/beloc/benrelax/benzirin/beta-necroton/betatreinta/betnovate/betoprolol/bi-profenid/bicerto/bioderm/biofocus/biovisc/bipreterax",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 8 de 15]",
+   "total_reportado": 95,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/bismucar/bladuril/bonese/bonjesta/breztrie-aerosphere/bria/brilinta/brimoftal/brimolol/brivaxon/bronax/broncotimod/broner/budesynt/buscapina/bussie/cabertrix/capiibine/caverject/celicob/cerazette/ciclorelax/cilosvitae/cimbrar/cipro/circadin/citivitae/clexane/clindamizol/clinomat/clob/clobak/clobegen/clobelac/cloperax/cluvax/cognizin/colmibe/condilom/congestex/constilax/corasan/cosopt/coveram/creactina/cremoquinona/cromovital/curaflex/cyclofem/cynetic/cytil/daivobet/dalacin/damiclin/daptomix/daxas/deca-durabolin/decadron-t/demulin/demzenil/depotrim/derma/dermalona/dermaskin/dermatrex/dermocuad/desalex/dexlanzopral/dexprofen/diamicron/diane/diantal/diarset/diclofen/dienomet/difast/differin/diflucan/dinive/diprospan",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 9 de 15]",
+   "total_reportado": 80,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/disgrasil/diurex/dolcettina/dolocodona/doloprotec/donabella/dormex/dorzopt/dovir/doxcef/doxiclat/doxium/drovelis/duodart/duolip/dutamvitae/dutaz-duo/ebixa/eclamp/ecosys/effient/elar-b/eligard/eliptic/elocom/emthexate/enablex/encefabol/enematrol/enzymed/epacor/epamin/epnone/erassin/escitrolam/esmya/esomax/esoz/esteine/etidoxina/etopan/exania/expan/expofarma/fanter/farma-d/farmatech/fastfen/femelin/femelle/femiane/femoston/fenolip/ferrokids/ferroprotina/fexu/fibrilok/filinar/finapel/finaspros/finorinex/firace/fixan/flebodia/flectadol/flobact/flucifem/fluimucil/fluiq/flumetol/flunazol/flutiform/flutox/forteo/forxiga/foster/fostren/fragmin/fucicort/funat",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 10 de 15]",
+   "total_reportado": 80,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/funide/furomet/fusitrex/gaap/galenicum/gamabenceno/gasprid/gastride/gatidex/genoprazol/genotropin/gestafer/giabri/gianda/giralmet/gitizol/glaucoftal/glaucoprost/glaucotensil/glemont/glicolic/gynclox/gyneclor/gynets/gynflu-d/gynodian/gynofer/gynoplus/gynotran/halocort/hct/hemocyton/hiclina/hidroferol/hydroxyurea/idena/ilana/ileine/imigran/imipramina-clorhidrato/impofin-z/invega/iofi/iprasynt/irbigen/irtal/isbela/isdin/isocord/isodine/isopto/isticol/izinova/jalra/jarit/jentadueto/jex/jolian/kairos/kenacort/ketian/ketoftal/ketum/kilox/klamicina/kombiglyze/korea/krodex/labsorel/landacort/landax/lanpraz/lantus/lasix/lastacaft/latanox/latoren/leaxin/lecetir/lenzetto",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 11 de 15]",
+   "total_reportado": 80,
+   "vueltas": 2,
+   "errores_recuperados": 1
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/lertus/levoc/levopront/levronc/libertrim/lidocaina-clorhidrato-2--jalea-esteril/lidoprocto/lincocin/lipostan/livial/lomotil/lopral/lotemicin/lotesoft/loxonin/ludika/lumigan/luxona/lysto/macrodantina/marcelle/maxitrol/mebemint/megaplex/meliane/meliba/memanvitae/menodin/merey/mesigyna/metadoxil/metrinelle/metronist/metsafe/micofentin/micofix/microfemin/microlut/migradorixina/migragesin/mikium/minesse/minot/minulet/mitrul/modualz/modulex/modusik-a/mofloxin/momesoft/moperid/moviflex/movipeg/multaq/multidol/mupicare/mupiral/mydriacyl/nafazol/nasacort/nasonex/natacyn/natrilix/natrixam/nebido/nebilet/necroton/necroxil/neogynon/nepaoftal/neumolex/neuro-up/neurobasal/neuropron/neviten/nofertyl/noltrex/nolvadex-d/novadrox/nti",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 12 de 15]",
+   "total_reportado": 80,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/nutracort/nuvaring/oceira/oftacromax/oftalmotrisol/ofteno/oidolyt/olodina/olonase/olopat/omnaris/omura/openxy/opharflex/ophthabracin-d/oracea/osmoclear/osmorin/oticaina/otirilin/ovale/ovestin/oxyoftal/pamox/pangetan/panotil/pataler/paxan/peitel/pentasol/percof/pfizer-s-a-s/picoprep/plavix/pleniv/pluriamin/postinor/pragmaten/prazed/precort/pred-f/predial/predis/prednisolin/preludyo/presiderm/pridas/primax/primosiston/prinf/proapet/procatec/procoralan/produo/profenid/prolia/proluton/propecia/proxigel/proxten/prozac/pulbronc/pulmicort/qlaira/quercetol/quetivitae/quibi/quinomax/ragitar/rantiz/reflucil/relpax/reminyl/renagio/renestex/renitec/resolor/restasis/reytrin/rifabac",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 13 de 15]",
+   "total_reportado": 80,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/rilaten/rilutek/rinaid/riniloran/rinolast/rinosal/rivacrist/robaxifen/robaxin/ropsohn-therapeutics/rosina/rosuvitae-plus/rozex/rytmonorm/sacrusyt/saxenda/scheriderm/secotex/semazin/seroquel/sertranex/sibet/sibilla/siligas/siloproste/silotrif/simpiox/sinac/sinogan/sinovul/siwiss-natural/skinpred/slinda/soolantra/sophipren/spasmoflex/spasmomen/sperti/spiolto/spiriva/stania/staquis/starolmi/styma/suaxina/suganon/synvisc/tada/talof/tamsecox/tapazol/tarka/tavor/taxus/tazepin/tecta/tejania/terbiderm/terotol/terravital/testoviron/theralite/thioctacid/thiogamma/tiare/tiazomet/timopres/timoptol/tinox/tiocolfen/tiomed/tiosynt/tiquepin/tizafen/tobracort/tolmus/torrox/toujeo/tranexam/trass",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 14 de 15]",
+   "total_reportado": 80,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/medicamentos-rx/trayenta/trelegy/trex/tri-luma/trialon/trifoliom/trilipix/trok/trusopt/ugarpan/ultibro/unifilm/ureaderm/urocit/urocuad/uromax/uropran/urovaxom/uroxacin/ursacol/vagicort/vaginsol/vagylin/valdoxan/valtrex/valudar/vasoton/vastarel/velbienne/venacur/venosmil/vermec/versatis/vertipro/vesomni/vibazina/victoza/vigadexa/vigamox/virosupril/visanne/voltaren/vonau/wellflex/wintroplex/xalacom/xalatan/xatral/xegrex/xenical/xertacol/xialox/xifen/xultophy/xyloprocto/yael/yasmin/yasminiq/yax/yaxibelle/zebesten/zemib/zerodol/zinnat/zintergia/zolem/zymaxid",
+   "filtro": [
+    [
+     "map",
+     "marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca,marca"
+    ]
+   ],
+   "nombre": "Medicamentos RX [marcas, grupo 15 de 15]",
+   "total_reportado": 67,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/movilidad-y-apoyo-fisico",
+   "filtro": [],
+   "nombre": "Movilidad y apoyo físico",
+   "total_reportado": 119,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/preparados-tradicionales",
+   "filtro": [],
+   "nombre": "Preparados tradicionales",
+   "total_reportado": 37,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/primeros-auxilios",
+   "filtro": [],
+   "nombre": "Primeros auxilios",
+   "total_reportado": 265,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  },
+  {
+   "fq": "/salud-y-medicamentos/productos-hogar",
+   "filtro": [],
+   "nombre": "Productos hogar",
+   "total_reportado": 6,
+   "vueltas": 1,
+   "errores_recuperados": 0
+  }
+ ],
+ "paginas": 365,
+ "errores": [],
+ "total_sitio": 4157,
+ "nota": "páginas HTML de categoría (?page=N); en raw/ se guarda el bloque __STATE__ con los productos de cada página",
+ "productos_unicos": 4157,
+ "productos_por_seccion": {
+  "Bienestar natural": 138,
+  "Cuidado de los ojos": 117,
+  "Cuidado respiratorio": 297,
+  "Dermatológicos": 58,
+  "Dolor y malestar": 196,
+  "Equipos médicos": 101,
+  "Estómago y digestión": 186,
+  "Medicamentos RX [marcas, grupo 1 de 15]": 500,
+  "Medicamentos RX [marcas, grupo 2 de 15]": 500,
+  "Medicamentos RX [marcas, grupo 3 de 15]": 285,
+  "Medicamentos RX [marcas, grupo 4 de 15]": 230,
+  "Medicamentos RX [marcas, grupo 5 de 15]": 160,
+  "Medicamentos RX [marcas, grupo 6 de 15]": 160,
+  "Medicamentos RX [marcas, grupo 7 de 15]": 160,
+  "Medicamentos RX [marcas, grupo 8 de 15]": 95,
+  "Medicamentos RX [marcas, grupo 9 de 15]": 80,
+  "Medicamentos RX [marcas, grupo 10 de 15]": 80,
+  "Medicamentos RX [marcas, grupo 11 de 15]": 80,
+  "Medicamentos RX [marcas, grupo 12 de 15]": 80,
+  "Medicamentos RX [marcas, grupo 13 de 15]": 80,
+  "Medicamentos RX [marcas, grupo 14 de 15]": 80,
+  "Medicamentos RX [marcas, grupo 15 de 15]": 67,
+  "Movilidad y apoyo físico": 119,
+  "Preparados tradicionales": 37,
+  "Primeros auxilios": 265,
+  "Productos hogar": 6
+ },
+ "no_mostrados_por_seccion": {},
+ "skus": 4158,
+ "skus_repetidos_descartados": 68,
+ "id_ejecucion": "E20261108T110310",
+ "inicio": "2026-11-08T11:10:27-05:00",
+ "fin": "2026-11-08T16:09:02-05:00",
+ "peticiones": 370,
+ "estado": "completa"
+}

@@ -1,0 +1,15 @@
+# Credenciales y configuración local: nunca al repositorio
+.Renviron
+.Rprofile.local
+rsconnect/
+.Rproj.user/
+.Rhistory
+.RData
+# Entorno de renv (se reconstruye con renv::restore())
+renv/library/
+renv/staging/
+renv/local/
+# Archivos temporales de SQLite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm

@@ -1,0 +1,7 @@
+# Copie este archivo como .Renviron (está en .gitignore) y complete SOLO si lo necesita.
+# La aplicación no requiere credenciales para funcionar. Para desplegar:
+#   - en la consola de R (NUNCA en un archivo del proyecto):
+#       rsconnect::setAccountInfo(name = "...", token = "...", secret = "...")
+#   - o configure las variables directamente en el panel de shinyapps.io / Posit Connect Cloud.
+# Ejemplo de variable leída con Sys.getenv("CLAVE"):
+# CLAVE=valor

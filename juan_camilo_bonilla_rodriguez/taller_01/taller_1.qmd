@@ -1,0 +1,204 @@
+---
+title: "Comparador de precios: dispositivos de medición y glucometría"
+author: "Juan Camilo Bonilla Rodríguez"
+lang: es
+format:
+  html:
+    toc: true
+    embed-resources: true
+    code-fold: true
+jupyter: python3
+execute:
+  warning: false
+---
+
+## Introducción
+
+Este trabajo compara los precios de dispositivos de medición y productos de glucometría vendidos en Colombia. La categoría comprende termómetros, tensiómetros, glucómetros, tiras reactivas, lancetas y oxímetros. Se excluyeron las pruebas de embarazo y ovulación. La recolección abarcó las secciones de cada tienda que contienen estos productos; de esa oferta se eligieron ocho presentaciones para comparar.
+
+Los comercios seleccionados fueron **Habib, Farmaprime y Farmaweb**, que tenían las ocho presentaciones disponibles al consultar sus catálogos. Durante la exploración también se recolectaron datos de Locatel, Cafam y La Rebaja, pero no se encontraron suficientes coincidencias con existencias. Esas capturas se conservaron en la base como antecedentes y no se usan en la comparación de precios de este informe.
+
+El objetivo es establecer dónde cuesta menos cada presentación y cuándo un empaque de mayor tamaño reduce el precio por tira o lanceta. Para ello se compararon los precios de las mismas ocho presentaciones en los tres comercios, recogidos durante una sola ejecución.
+
+## Recolección de datos
+
+La extracción está en `scraper.py`. Al ejecutar el documento se procesan las copias guardadas en `raw/`, por lo que se pueden obtener los resultados sin conexión. La opción `TALLER_ONLINE=1` permite volver a consultar las tiendas. El reprocesamiento conserva la fecha original de cada precio y evita insertar observaciones repetidas.
+
+```{python}
+import os
+import pandas as pd
+from IPython.display import display, Markdown
+from codigo import db
+from scraper import run_all, SCRAPERS
+from codigo.consultas import QUERIES, ejecutar, DISPONIBLES
+from codigo.validacion import validar_cobertura
+from codigo.graficos import grafico_precios, grafico_precio_unitario, grafico_ahorro
+
+resumen = run_all(offline=os.environ.get("TALLER_ONLINE", "0") != "1")
+con = db.conectar()
+corrida = db.ultima_corrida(con)
+assert corrida is not None, "No hay una corrida completa de los tres comercios activos"
+control = validar_cobertura(con, corrida)
+assert control["cumple_requisito_completo"], "No se alcanzaron ocho presentaciones disponibles en los tres"
+display(pd.DataFrame(resumen).T)
+display(pd.DataFrame([control]))
+fechas = pd.read_sql_query("SELECT MIN(o.fecha_hora) AS inicio_captura,MAX(o.fecha_hora) AS fin_captura FROM observaciones o JOIN ejecuciones e USING(ejecucion_id) WHERE corrida_id=?", con, params=[corrida])
+display(Markdown(f"**Corrida:** `{corrida}`. Las fechas y horas corresponden a Colombia."))
+display(fechas)
+```
+
+La consulta reunió **24 precios: ocho presentaciones en tres comercios**. En los 24 casos, el sitio indicaba disponibilidad. Los productos agotados del resto de la categoría también se guardaron, aunque quedaron fuera de esta selección.
+
+## Fuentes, categorías y scraping
+
+| Comercio | Secciones equivalentes | Extracción |
+|---|---|---|
+|Habib|Equipos y dispositivos médicos → Equipos de medición, con sus descendientes de glucometría, termómetros y tensiómetros|Catálogo VTEX, filtro jerárquico `/51/176/`, páginas de 50|
+|Farmaprime|Ortopedia y Dispositivos Médicos|API pública WooCommerce Store, categoría 51085, páginas de 100|
+|Farmaweb|Equipamiento Médico y secciones separadas de Termómetros, Termómetros Digitales y Tensiómetros|API pública WooCommerce Store, categorías 26968, 26887, 44978 y 27026, páginas de 100|
+
+Las direcciones consultadas están en `URLS_COMERCIO4`, `URLS_COMERCIO5` y `URLS_COMERCIO6`, dentro de `scraper.py`. Primero se revisaron las categorías de las tiendas para ubicar los productos. Después se recorrieron sus páginas y se guardaron las respuestas completas. Los 24 precios comparados proceden de esa misma recolección.
+
+En Habib se extrajo la oferta del vendedor principal desde `products[].items[].sellers[].commertialOffer`: `Price` contiene el precio, `ListPrice` el precio de lista y `AvailableQuantity` la cantidad disponible. El encabezado `resources` permitió comprobar el total de productos. En Farmaprime y Farmaweb se usó el servicio público WooCommerce Store: los precios están en `prices` y el total de resultados en `X-WP-Total`. Los valores se convirtieron a COP de acuerdo con `currency_minor_unit`, porque la escala difiere entre tiendas.
+
+Para registrar disponibilidad, Habib debía reportar una cantidad mayor que cero. En Farmaprime y Farmaweb se exigió que el producto estuviera en stock, permitiera la compra y no figurara como pedido pendiente de reposición (`backorder`).
+
+Las peticiones HTTP se hicieron con un agente académico identificable y una pausa de un segundo entre solicitudes. Se fijó un tiempo de espera de 30 segundos, hasta tres intentos por petición y un límite de 60 páginas por sección. El código detecta páginas repetidas. También se revisaron los archivos `robots.txt` y se guardó la página legal de Habib. En las portadas de Farmaprime y Farmaweb no se localizaron enlaces de condiciones; la ruta habitual de términos respondió 404.
+
+### Cobertura de las categorías
+
+```{python}
+cobertura=[]
+for slug in resumen:
+    datos=SCRAPERS[slug](offline=True,corrida_id=corrida)
+    for tramo in datos.attrs["cobertura"]:
+        cobertura.append({"comercio":datos.comercio.iloc[0],**tramo})
+display(pd.DataFrame(cobertura))
+```
+
+Los conteos de la tabla corresponden a los anuncios recuperados antes de la limpieza. Por eso son mayores que el número de productos incluidos en el análisis: la sección de Farmaprime, por ejemplo, contiene numerosos insumos ortopédicos ajenos a la categoría. En Farmaweb fue necesario consultar por separado termómetros y tensiómetros, pues no todos estaban dentro de Equipamiento Médico. La primera captura de esa tienda quedó parcial y se conservó en el historial.
+
+## Limpieza y correspondencia
+
+La limpieza se realizó en `codigo/limpieza.py`, manteniendo los textos originales en campos separados. Se unificaron nombres de marcas y unidades, se identificó el contenido de los empaques y se clasificaron los productos. Se descartaron accesorios, pruebas ajenas a la categoría, sensores continuos y suscripciones. La revisión del nombre evitó incluir tiras adhesivas o sábanas en tira entre las tiras reactivas. Los datos que no pudieron identificarse se dejaron como ausentes.
+
+```{python}
+from codigo.correspondencia import validar_correspondencia
+mapeo=pd.read_csv("datos/correspondencia.csv",dtype={"sku":str})
+display(mapeo)
+assert validar_correspondencia(con).empty
+```
+
+Las correspondencias se revisaron con el nombre, la marca, el modelo, la cantidad y los códigos de cada producto. Farmaprime publica códigos de barras en la descripción; Farmaweb utiliza referencias de proveedor que también aparecen en el catálogo de Habib. Las fotografías ayudaron a comprobar los componentes de los kits. Habib, además, publica códigos internos de seis dígitos en el campo `ean`; estos se conservaron tal como estaban y se distinguieron de los códigos de barras del fabricante. El detalle de las ocho correspondencias está en `documentacion/revision_correspondencia.md`.
+
+Cada kit se tomó como un empaque completo, de modo que su precio por unidad corresponde al kit. Para comparar tamaños se agruparon las tiras G30A de 50 y 150 unidades, y las tiras Mediclas de 25 y 50. Los cálculos se hicieron dentro de cada grupo, manteniendo separados los kits y las lancetas.
+
+Los archivos de `raw/manifiestos/` indican qué comercios y qué tabla de correspondencias se usaron en cada ejecución. La tabla `cohortes_comparables` guarda los productos seleccionados en cada captura. Así se puede reconstruir la comparación original aunque después cambien las fuentes.
+
+## Base de datos SQLite
+
+```{python}
+display(pd.read_sql_query("SELECT name,type FROM sqlite_master WHERE type IN ('table','view') ORDER BY type,name",con))
+display(pd.read_sql_query("SELECT e.corrida_id,c.nombre,e.n_registros,e.estado FROM ejecuciones e JOIN comercios c USING(comercio_id) ORDER BY e.corrida_id,c.nombre",con))
+assert con.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+assert not con.execute("PRAGMA foreign_key_check").fetchall()
+```
+
+La base relaciona cada anuncio con su comercio y cada precio con el anuncio y la ejecución en que fue consultado. Las restricciones de unicidad impiden insertar dos veces la misma observación. Las tablas `correcciones`, `descartes` y `rechazos` registran los cambios de clasificación y los datos que no se pudieron usar. Cada precio conserva el texto de la captura y la ruta de su respuesta original (`raw_ref`). Las 279 observaciones de la exploración inicial siguen en la base.
+
+```{python}
+display(pd.read_sql_query("SELECT comercio,COUNT(*) AS observaciones,SUM(descuento_verificable) AS descuentos_numericos,SUM(promocion_anunciada) AS promociones_anunciadas FROM v_promociones WHERE corrida_id=? GROUP BY comercio",con,params=[corrida]))
+```
+
+Se distinguieron los descuentos de precio de las promociones anunciadas. Una oferta «pague dos, lleve tres», por ejemplo, puede aparecer sin un precio de lista mayor. En ese caso se registró el anuncio de la promoción, pero no se le asignó un porcentaje de descuento.
+
+## Consultas SQL
+
+Las siguientes consultas responden las ocho preguntas del análisis. Salvo los conteos del historial, los resultados corresponden a la ejecución indicada al comienzo del informe. Cada comparación usa las mismas presentaciones en los tres comercios.
+
+```{python}
+#| echo: false
+lecturas={
+1:"La base contiene 544 observaciones, 282 anuncios y 16 identidades de productos comparables. Los seis comercios corresponden al historial completo; la comparación actual usa tres y reúne ocho presentaciones.",
+2:"Las ocho presentaciones tienen precio y existencias en los tres comercios. Se obtuvieron 24 observaciones, sin repetir ningún par producto–comercio.",
+3:"Habib presenta el menor precio en seis productos, Farmaweb en uno y Farmaprime en otro. No hubo empates en esta captura. El promedio resume los tres precios de cada presentación.",
+4:"El mayor ahorro absoluto es de 13.800 COP en el paquete G30A de 150 tiras. En las 25 tiras Mediclas, la diferencia es de 12.500 COP, equivalente al 19,94 % del precio más alto.",
+5:"Habib ofrece el menor precio por tira en los dos grupos de tamaños comparados: 1.310 COP en G30A de 150 unidades y 1.970 COP en Mediclas de 50. Los kits y las lancetas se mantienen en grupos separados.",
+6:"Mediclas de 25 tiras encabeza la lista con una diferencia del 19,94 %. En las tiras G30A de 50, la diferencia es de 1.500 COP, un 1,41 % del precio máximo.",
+7:"Habib tiene 49 observaciones sin descripción. En Farmaprime falta la marca en una y en Farmaweb en diez. Hay dos observaciones sin contenido identificado en cada comercio. Farmaweb aportó además un precio inválido que quedó en rechazos.",
+8:"Habib aportó 64 productos con precio válido, Farmaprime 51 y Farmaweb 24 en la captura completa. El mayor número de anuncios inicialmente extraídos de Farmaprime se explica por la amplitud de su sección de ortopedia. Los porcentajes se calculan sobre los productos con precio válido."}
+for n,sql in QUERIES.items():
+    display(Markdown(f"### Pregunta {n}\n\n```sql\n{sql}\n```"))
+    display(ejecutar(n,con,corrida))
+    display(Markdown(lecturas[n]))
+```
+
+## Disponibilidad y recomendación por presentación
+
+```{python}
+ofertas=pd.read_sql_query(DISPONIBLES,con,params={"corrida_id":corrida})
+assert len(ofertas)==24 and ofertas.disponibilidad.eq("disponible").all()
+display(ofertas)
+display(ofertas.loc[ofertas.mejor_disponible==1,["producto","comercio","precio_anunciado_cop","disponibilidad"]])
+```
+
+Habib tuvo el menor precio en seis de las ocho presentaciones. Farmaweb ofreció el kit G30A con glucómetro más económico, mientras que Farmaprime tuvo el menor precio de las 100 lancetas Mediclas. Esta comparación corresponde al precio anunciado del producto; el envío puede cambiar el total de la compra.
+
+## Gráficos e interpretación
+
+```{python}
+display(grafico_precios(con,corrida))
+```
+
+Las diferencias más amplias se observan en las tiras Mediclas de 25 unidades y en el paquete G30A de 150. Los precios de las tiras G30A de 50, en cambio, son cercanos entre los tres comercios.
+
+```{python}
+display(grafico_precio_unitario(con,corrida))
+```
+
+El precio unitario permite comparar ofertas del mismo producto dentro de cada fila. En las tiras y lancetas se expresa por artículo; en los kits, por empaque completo. La comparación entre tamaños de tiras se presenta más adelante.
+
+```{python}
+display(grafico_ahorro(con,corrida))
+ahorros=ejecutar(6,con,corrida)
+mayor=ahorros.iloc[0]
+display(Markdown(f"La mayor diferencia porcentual corresponde a **{mayor.producto}**: {mayor.ahorro_cop:,.0f} COP, equivalentes al {mayor.ahorro_pct:.2f} % del precio máximo de esa presentación."))
+```
+
+La diferencia porcentual ayuda a identificar dónde vale la pena comparar comercios. La diferencia en COP muestra cuánto se ahorraría al comprar un empaque de esa presentación.
+
+```{python}
+import matplotlib.pyplot as plt
+from codigo.config import COLORES
+comparacion=pd.read_sql_query("SELECT v.producto_nombre,f.familia,v.comercio,v.contenido_total,v.precio,v.precio_por_unidad FROM v_comparables v JOIN familias_unidad f USING(producto_id) WHERE v.corrida_id=?",con,params=[corrida])
+familias=list(comparacion.familia.unique())
+fig,axs=plt.subplots(1,len(familias),figsize=(13,5),squeeze=False)
+for ax,familia in zip(axs[0],familias):
+    sub=comparacion[comparacion.familia==familia]
+    for comercio in sub.comercio.unique():
+        s=sub[sub.comercio==comercio].sort_values("contenido_total")
+        ax.plot(s.contenido_total,s.precio_por_unidad,"o-",label=comercio,color=COLORES[comercio])
+    ax.set_title(familia);ax.set_xlabel("Tiras por empaque comercial");ax.set_ylabel("COP por tira");ax.legend();ax.grid(alpha=.2)
+fig.tight_layout();display(fig)
+display(comparacion.sort_values(["familia","contenido_total","comercio"]))
+```
+
+En Habib, las 150 tiras G30A costaron 196.500 COP, equivalentes a 1.310 COP por tira. El empaque de 50 costó 104.700 COP, o 2.094 COP por tira. Comprar el paquete grande reduce el costo unitario, pero exige pagar 91.800 COP más en esa compra. En Mediclas, pasar de 25 a 50 tiras reduce el precio de 2.008 a 1.970 COP por tira en el mismo comercio. La diferencia entre tamaños es mucho menor en esta línea.
+
+## Limitaciones
+
+Los precios y las existencias corresponden al momento de consulta. El análisis no incluye envío, mínimos de compra ni restricciones de las promociones. La entrega a una dirección concreta y el inventario disponible deben confirmarse al realizar el pedido.
+
+La cobertura depende de cómo cada tienda organiza sus categorías. Algunos anuncios no tienen descripción o marca identificable, y hubo precios que no pudieron utilizarse. También se encontró una inconsistencia en Farmaweb: el anuncio de dos cajas de 25 tiras G30A menciona Mediclas en la descripción. Ese producto se conservó en los datos recolectados, pero quedó fuera de las ocho correspondencias.
+
+Las capturas se realizaron el 16 de noviembre de 2026, por lo que no permiten evaluar cambios de precio entre días. La ejecución se comprobó localmente, tanto en línea como a partir de las copias guardadas; no se probó en otro computador.
+
+## Conclusiones
+
+En la fecha de consulta, Habib fue la opción más económica para las tiras G30A y Mediclas, el kit de 50 tiras G30A con 50 lancetas y las 50 lancetas Glucoquick. Para el kit que incluye glucómetro convino Farmaweb; para las 100 lancetas Mediclas, Farmaprime.
+
+El tamaño del empaque también influyó en el costo. Las 150 tiras G30A tuvieron un precio por tira considerablemente menor que las 50, mientras que la ventaja del empaque Mediclas de 50 frente al de 25 fue pequeña. La elección depende de la cantidad que se necesite y del dinero disponible para la compra. Estas comparaciones se limitan a cada línea de producto y no indican que las tiras de marcas diferentes sean intercambiables.
+
+```{python}
+con.close()
+```

@@ -1,0 +1,102 @@
+{
+ "comercio": "locatel",
+ "secciones": [
+  {
+   "fq": "C:/4/25/",
+   "nombre": "Drogueria > medicamentos",
+   "total_reportado": 2590,
+   "particiones": [
+    {
+     "filtros": [
+      "C:/4/25/",
+      "P:[0 TO 156250]"
+     ],
+     "total": 2324,
+     "productos_distintos": 2324,
+     "vueltas": 1
+    },
+    {
+     "filtros": [
+      "C:/4/25/",
+      "P:[156250.01 TO 312500]"
+     ],
+     "total": 219,
+     "productos_distintos": 219,
+     "vueltas": 1
+    },
+    {
+     "filtros": [
+      "C:/4/25/",
+      "P:[312500.01 TO 625000]"
+     ],
+     "total": 43,
+     "productos_distintos": 43,
+     "vueltas": 1
+    },
+    {
+     "filtros": [
+      "C:/4/25/",
+      "P:[625000.01 TO 1250000]"
+     ],
+     "total": 3,
+     "productos_distintos": 3,
+     "vueltas": 1
+    },
+    {
+     "filtros": [
+      "C:/4/25/",
+      "P:[1250000.01 TO 2500000]"
+     ],
+     "total": 1,
+     "productos_distintos": 1,
+     "vueltas": 1
+    }
+   ]
+  },
+  {
+   "fq": "C:/4/28/",
+   "nombre": "Drogueria > Medicamentos Otc",
+   "total_reportado": 670,
+   "particiones": [
+    {
+     "filtros": [
+      "C:/4/28/"
+     ],
+     "total": 670,
+     "productos_distintos": 670,
+     "vueltas": 1
+    }
+   ]
+  },
+  {
+   "fq": "C:/4/26/168/",
+   "nombre": "Drogueria > vitaminas > Antiinfecciosos",
+   "total_reportado": 4,
+   "particiones": [
+    {
+     "filtros": [
+      "C:/4/26/168/"
+     ],
+     "total": 4,
+     "productos_distintos": 4,
+     "vueltas": 1
+    }
+   ]
+  }
+ ],
+ "paginas": 70,
+ "errores": [],
+ "productos_unicos": 3264,
+ "productos_por_seccion": {
+  "Drogueria > medicamentos": 2590,
+  "Drogueria > Medicamentos Otc": 670,
+  "Drogueria > vitaminas > Antiinfecciosos": 4
+ },
+ "skus": 3354,
+ "skus_repetidos_descartados": 0,
+ "id_ejecucion": "E20261108T094725",
+ "inicio": "2026-11-08T09:50:27-05:00",
+ "fin": "2026-11-08T09:53:40-05:00",
+ "peticiones": 85,
+ "estado": "completa"
+}

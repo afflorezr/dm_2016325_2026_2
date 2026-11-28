@@ -1,0 +1,25 @@
+producto_id,nombre_std,marca_std,subcategoria_std,contenido,unidad,n_unidades,concentracion,comercio,sku
+6,Glucoquick G30A · kit 50 tiras + 50 lancetas + glucómetro,glucoquick,glucometro,1,unidad,1,,Habib,2459
+6,Glucoquick G30A · kit 50 tiras + 50 lancetas + glucómetro,glucoquick,glucometro,1,unidad,1,,Farmaprime,9414
+6,Glucoquick G30A · kit 50 tiras + 50 lancetas + glucómetro,glucoquick,glucometro,1,unidad,1,,Farmaweb,39186
+10,Glucoquick G30A · 50 tiras,glucoquick,tiras_reactivas,50,unidad,1,,Habib,2437
+10,Glucoquick G30A · 50 tiras,glucoquick,tiras_reactivas,50,unidad,1,,Farmaprime,9416
+10,Glucoquick G30A · 50 tiras,glucoquick,tiras_reactivas,50,unidad,1,,Farmaweb,91933
+11,Glucoquick G30A · 3 cajas de 50 tiras,glucoquick,tiras_reactivas,50,unidad,3,,Habib,2445
+11,Glucoquick G30A · 3 cajas de 50 tiras,glucoquick,tiras_reactivas,50,unidad,3,,Farmaprime,9420
+11,Glucoquick G30A · 3 cajas de 50 tiras,glucoquick,tiras_reactivas,50,unidad,3,,Farmaweb,91929
+12,Glucoquick G30A · kit 50 tiras + 50 lancetas,glucoquick,tiras_reactivas,1,unidad,1,,Habib,2444
+12,Glucoquick G30A · kit 50 tiras + 50 lancetas,glucoquick,tiras_reactivas,1,unidad,1,,Farmaprime,9421
+12,Glucoquick G30A · kit 50 tiras + 50 lancetas,glucoquick,tiras_reactivas,1,unidad,1,,Farmaweb,91937
+13,Glucoquick · 50 lancetas estériles,glucoquick,lancetas,50,unidad,1,,Habib,2461
+13,Glucoquick · 50 lancetas estériles,glucoquick,lancetas,50,unidad,1,,Farmaprime,6923
+13,Glucoquick · 50 lancetas estériles,glucoquick,lancetas,50,unidad,1,,Farmaweb,39430
+14,Mediclas · 25 tiras reactivas,mediclas,tiras_reactivas,25,unidad,1,,Habib,4920
+14,Mediclas · 25 tiras reactivas,mediclas,tiras_reactivas,25,unidad,1,,Farmaprime,9415
+14,Mediclas · 25 tiras reactivas,mediclas,tiras_reactivas,25,unidad,1,,Farmaweb,35599
+15,Mediclas · 50 tiras reactivas,mediclas,tiras_reactivas,50,unidad,1,,Habib,4919
+15,Mediclas · 50 tiras reactivas,mediclas,tiras_reactivas,50,unidad,1,,Farmaprime,9417
+15,Mediclas · 50 tiras reactivas,mediclas,tiras_reactivas,50,unidad,1,,Farmaweb,41174
+16,Mediclas · 100 lancetas estériles,mediclas,lancetas,100,unidad,1,,Habib,5092
+16,Mediclas · 100 lancetas estériles,mediclas,lancetas,100,unidad,1,,Farmaprime,6922
+16,Mediclas · 100 lancetas estériles,mediclas,lancetas,100,unidad,1,,Farmaweb,38772

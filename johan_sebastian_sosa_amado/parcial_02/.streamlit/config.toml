@@ -1,0 +1,12 @@
+# Tema de la aplicación. El color principal es un gris oscuro neutro para
+# que botones y filtros no se confundan con los colores de los comercios.
+[theme]
+base = "light"
+primaryColor = "#334155"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f5f9"
+textColor = "#1e293b"
+font = "sans serif"
+
+[server]
+headless = true

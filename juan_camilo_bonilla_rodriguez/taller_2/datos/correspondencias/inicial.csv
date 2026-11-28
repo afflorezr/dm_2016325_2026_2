@@ -1,0 +1,28 @@
+producto_id,nombre_std,marca_std,subcategoria_std,contenido,unidad,n_unidades,concentracion,comercio,sku
+1,Accu-Chek Softclix · 25 lancetas,accu-chek,lancetas,25,unidad,1,,Locatel,16494
+1,Accu-Chek Softclix · 25 lancetas,accu-chek,lancetas,25,unidad,1,,Cafam,966
+1,Accu-Chek Softclix · 25 lancetas,accu-chek,lancetas,25,unidad,1,,La Rebaja,3379
+2,Accu-Chek Active · 50 tiras,accu-chek,tiras_reactivas,50,unidad,1,,Locatel,16485
+2,Accu-Chek Active · 50 tiras,accu-chek,tiras_reactivas,50,unidad,1,,Cafam,965
+2,Accu-Chek Active · 50 tiras,accu-chek,tiras_reactivas,50,unidad,1,,La Rebaja,2732
+3,Accu-Chek Instant · 50 tiras,accu-chek,tiras_reactivas,50,unidad,1,,Locatel,23761
+3,Accu-Chek Instant · 50 tiras,accu-chek,tiras_reactivas,50,unidad,1,,Cafam,5338
+3,Accu-Chek Instant · 50 tiras,accu-chek,tiras_reactivas,50,unidad,1,,La Rebaja,10283
+4,Begut flexible adulto · 1 termómetro,begut,termometro,1,unidad,1,,Locatel,24424
+4,Begut flexible adulto · 1 termómetro,begut,termometro,1,unidad,1,,Cafam,5025
+4,Begut flexible adulto · 1 termómetro,begut,termometro,1,unidad,1,,La Rebaja,21584
+5,Vick digital · 1 termómetro,vicks,termometro,1,unidad,1,,Locatel,16150
+5,Vick digital · 1 termómetro,vicks,termometro,1,unidad,1,,Cafam,3240
+5,Vick digital · 1 termómetro,vicks,termometro,1,unidad,1,,La Rebaja,10754
+6,Glucoquick G30A · kit 50 tiras + 50 lancetas + glucómetro,glucoquick,glucometro,1,unidad,1,,Locatel,29387
+6,Glucoquick G30A · kit 50 tiras + 50 lancetas + glucómetro,glucoquick,glucometro,1,unidad,1,,Cafam,5779
+6,Glucoquick G30A · kit 50 tiras + 50 lancetas + glucómetro,glucoquick,glucometro,1,unidad,1,,La Rebaja,15215
+7,Glucoquick G30A · 2 cajas de 25 tiras,glucoquick,tiras_reactivas,25,unidad,2,,Locatel,29254
+7,Glucoquick G30A · 2 cajas de 25 tiras,glucoquick,tiras_reactivas,25,unidad,2,,Cafam,5777
+7,Glucoquick G30A · 2 cajas de 25 tiras,glucoquick,tiras_reactivas,25,unidad,2,,La Rebaja,13632
+8,Glucoquick Diamond · kit 50 tiras + 50 lancetas,glucoquick,tiras_reactivas,1,unidad,1,,Locatel,30478
+8,Glucoquick Diamond · kit 50 tiras + 50 lancetas,glucoquick,tiras_reactivas,1,unidad,1,,Cafam,5776
+8,Glucoquick Diamond · kit 50 tiras + 50 lancetas,glucoquick,tiras_reactivas,1,unidad,1,,La Rebaja,21702
+9,Glucoquick GD50 · kit 50 tiras + glucómetro + lancetas,glucoquick,glucometro,1,unidad,1,,Locatel,30354
+9,Glucoquick GD50 · kit 50 tiras + glucómetro + lancetas,glucoquick,glucometro,1,unidad,1,,Cafam,5780
+9,Glucoquick GD50 · kit 50 tiras + glucómetro + lancetas,glucoquick,glucometro,1,unidad,1,,La Rebaja,21677

@@ -1,0 +1,232 @@
+---
+title: "Clase 13: Regresión Lineal, Múltiple y Logística"
+author: "Laura Katherine Martinez Castiblanco"
+output:
+  html_document:
+    theme: flatly
+    self_contained: true
+    code_folding: hide
+    mathjax: default
+    toc: true
+    toc_float: true
+#runtime: shiny
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+
+```{r setup, include=FALSE}
+# Configuración global del documento reproducible
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  dpi = 120
+)
+
+# Carga de librerías necesarias para el análisis
+library(tidyverse)
+library(knitr)
+library(broom)
+
+
+# Función auxiliar para renderizado elegante de tablas HTML
+mostrar_tabla <- function(df, caption = "", n = 10) {
+  kable(
+    head(df, n),
+    format = "html",
+    caption = caption,
+    table.attr = 'class="table table-striped table-hover table-bordered table-condensed"'
+  )
+}
+```
+
+Se tienen los siguientes datos:
+
+```{r construccion-datos}
+set.seed(42)
+n <- 120
+ventas <- data.frame(
+  mes        = rep(1:12, times = 10),
+  publicidad = round(runif(n, min = 2.0, max = 4.5), 1),
+  precio     = round(runif(n, min = 13.0, max = 15.5), 1),
+  region     = sample(c("Norte", "Sur", "Este", "Oeste"), n, replace = TRUE),
+  promo      = sample(c(0L, 1L), n, replace = TRUE)
+)
+ventas$ventas <- round(
+  100 + 18 * ventas$publicidad - 5 * ventas$precio +
+    rnorm(n, mean = 0, sd = 8)
+)
+
+# Visualización previa del dataset
+mostrar_tabla(ventas)
+```
+
+---
+
+# Ejercicio 1: Regresión Lineal Simple
+
+Ajuste un modelo de regresión lineal simple que explique las ventas a partir del gasto en publicidad. Interprete el coeficiente de publicidad y el \(R^2\). ¿El gasto en publicidad explica bien las ventas?
+
+
+el modelo es de la forma: 
+
+\[
+\text{ventas}_i = \beta_0 + \beta_1 \cdot \text{publicidad}_i + \varepsilon_i
+\]
+
+```{r ejercicio-1}
+# Ajuste del modelo de regresión lineal simple
+mod1 <- lm(ventas ~ publicidad, data = ventas)
+summary(mod1)
+```
+Con la estimación el modelo queda de la forma:
+
+\[
+\widehat{\text{ventas}} = 26{,}47 + 18{,}67 \cdot \text{publicidad}
+\]
+
+lo cual indica que por cada unidad adicional invertida en publicidad, las ventas se incrementan en promedio en $18{,}67$ unidades.
+
+
+Dado que el coeficiente de determinación se define como
+
+\[
+R^2 = 1 - \frac{\text{SS}_{\text{res}}}{\text{SS}_{\text{tot}}} = 0{,}7374
+\]
+
+quierew decir que el $73{,}74\%$ de la variabilidad total de las ventas es explicada por la inversión publicitaria. Esto quiere decir que la publicidad explica bien las ventas dado su alto $R^2$ y su elevada significancia estadística ($p < 2 \times 10^{-16}$).
+
+
+---
+
+# Ejercicio 2: Regresión Lineal Múltiple
+
+Ajuste un modelo de regresión lineal múltiple con publicidad y precio como predictores. Compare el \(R^2\) ajustado con el del ejercicio anterior. ¿Cuál variable aporta más a explicar las ventas?
+
+Dado el modelo: 
+
+\[
+\text{ventas}_i = \beta_0 + \beta_1 \cdot \text{publicidad}_i + \beta_2 \cdot \text{precio}_i + \varepsilon_i
+\]
+
+Se estima y se compara con el primer modelo y se tienen los siguientes resultados:
+
+```{r ejercicio-2}
+# Ajuste del modelo múltiple
+mod2 <- lm(ventas ~ publicidad + precio, data = ventas)
+summary(mod2)
+
+# Comparación del R2 ajustado mediante función glance()
+glance(mod1) %>% select(r.squared, adj.r.squared, sigma)
+glance(mod2) %>% select(r.squared, adj.r.squared, sigma)
+```
+
+Por lo tanto el modelo queda de la forma:
+\[
+\widehat{\text{ventas}} = 96{,}39 + 18{,}63 \cdot \text{publicidad} - 4{,}90 \cdot \text{precio}
+\]
+
+con $R^2_{\text{adj}} = 1 - \left[(1 - R^2) \displaystyle\frac{n - 1}{n - p - 1}\right] = 0{,}7800$
+
+
+se observa que el $R^2$ ajustado se incrementa de $0{,}7352$ (Modelo 1) a $0{,}7800$ (Modelo 2), confirmando que incorporar el precio mejora la capacidad explicativa. Pero que la publicidad aporta en mayor medida a explicar las ventas al presentar un estadístico $t$ de mayor magnitud absoluta ($t = 19{,}93$ vs. $t = -5{,}00$ del precio). Esto se corrobora al comparar los $R^2$, puesto que no difieren mucho al agregar el precio al modelo.
+
+
+
+---
+
+# Ejercicio 3: Variable Categórica (Dummies)
+
+Incluya la variable `region` como predictor en el modelo múltiple. Codifíquela correctamente como variable dummy. ¿Existe diferencia significativa en ventas entre regiones? Interprete los coeficientes.
+
+En este caso el modelo es de la forma:
+
+$$\text{ventas}_i = \beta_0 + \beta_1 \cdot \text{pub}_i + \beta_2 \cdot \text{prec}_i + \beta_3 D_{\text{Norte}} + \beta_4 D_{\text{Oeste}} + \beta_5 D_{\text{Sur}} + \varepsilon_i$$
+con `Este` como categoria base, al estimar el modelo se tienen estos resultados:
+
+```{r ejercicio-3}
+# Asegurar la codificación como factor
+ventas$region <- factor(ventas$region)
+
+# Ajuste del modelo con variable cualitativa
+mod3 <- lm(ventas ~ publicidad + precio + region, data = ventas)
+summary(mod3)
+
+# Prueba ANOVA global para la variable región
+anova(mod3)
+```
+
+Luego el modelo es de la forma:
+
+$$\widehat{\text{ventas}} = 100{,}88 + 18{,}62 \cdot \text{pub} - 5{,}09 \cdot \text{prec} - 1{,}49 D_{\text{Norte}} - 4{,}01 D_{\text{Oeste}} - 1{,}82 D_{\text{Sur}}$$
+
+Pr tanto, con relación a la región `Este`, las ventas disminuyen en promedio $1{,}49$ unidades en el Norte, $4{,}01$ en el Oeste y $1{,}82$ en el Sur, manteniendo constantes publicidad y precio.
+
+
+Al evaluar el ANOVA se evidencia que no existen diferencias estadísticamente significativas en ventas entre regiones (ANOVA global: $F = 1{,}257$, $p = 0{,}2926 > 0{,}05$).
+
+
+---
+
+# Ejercicio 4: Regresión Logística
+
+Use la variable `promo` (\(0 =\) sin promoción, \(1 =\) con promoción) como variable dependiente. Ajuste un modelo logístico con publicidad y precio como predictores. Reporte los odds ratios e interprete el efecto del precio sobre la probabilidad de aplicar una promoción.
+
+Por lo tanto el modelo Logit es de la forma:
+
+$$\ln\left(\frac{p_i}{1 - p_i}\right) = \beta_0 + \beta_1 \cdot \text{publicidad}_i + \beta_2 \cdot \text{precio}_i$$
+
+con Odds Ratio: $\text{OR}_k = e^{\hat{\beta}_k}$, se estima el modelo, junto con sus respectivos Odds Ratios:
+
+
+```{r ejercicio-4}
+# Ajuste del modelo de regresión logística (GLM binomial)
+mod4 <- glm(promo ~ publicidad + precio, data = ventas, family = binomial)
+summary(mod4)
+
+# Cálculo de Odds Ratios e Intervalos de Confianza del 95%
+exp(cbind(OR = coef(mod4), confint(mod4)))
+```
+
+El modelo estimado es de la forma:
+
+$$\operatorname{logit}(\hat{p}) = 5{,}375 + 0{,}055 \cdot \text{publicidad} - 0{,}390 \cdot \text{precio}$$
+
+y sus Odds Ratios de la publicidad es $\text{OR} = 1{,}057$ ($\text{IC}_{95\%}: [0{,}65; 1{,}72]$), mientras que el del precio es $\text{OR} = 0{,}677$ ($\text{IC}_{95\%}: [0{,}40; 1{,}12]$).
+
+Esto quiere decir que por cada incremento unitario en precio, las ventajas (*odds*) de aplicar una promoción disminuyen un $32{,}3\%$ ($\text{OR} = 0{,}677$), sin ser un efecto estadísticamente significativo ($p = 0{,}135 > 0{,}05$).
+
+---
+
+# Ejercicio 5: Diagnóstico y Comunicación de Negocio
+
+Para el modelo múltiple del Ejercicio 2, genere los gráficos de diagnóstico (residuales vs. ajustados, Q-Q de residuales, escala-localización). Identifique si se cumplen los supuestos de linealidad, homocedasticidad y normalidad. Redacte una conclusión de dos párrafos como si fuera para un informe de negocio.
+
+A continuación se presentan los principales gráficos de validación del modelo 2:
+
+```{r ejercicio-5, fig.height=7}
+# Diagnóstico de supuestos para el modelo múltiple (mod2)
+par(mfrow = c(2, 2))
+plot(mod2)
+par(mfrow = c(1, 1))
+```
+
+Segun las gráficas se evidencia que:
+
+* **Linealidad:** Se cumple, la tendencia central de los residuos en *Residuals vs Fitted* es plana y sin patrones.
+
+
+* **Homocedasticidad:** Se cumple, pues el gráfico *Scale-Location* muestra una dispersión vertical uniforme de los errores.
+
+
+* **Normalidad:** Se cumple, dado que en el gráfico *Normal Q-Q* los residuos se alinean sobre la diagonal teórica.
+
+
+El análisis evidencia que las ventas están explicadas principalmente por la inversión en publicidad y la magnitud del precio, logrando capturar en conjunto el $78\%$ de la variabilidad total del negocio ($R^2_{\text{adj}} = 0{,}780$). Cada unidad incremental destinada a publicidad genera un incremento promedio de $18{,}63$ unidades en las ventas, mientras que cada incremento unitario en el precio las reduce en $4{,}90$ unidades, confirmando tanto la efectividad de la publicidad como la sensibilidad de la demanda ante variaciones de precio.
+
+Por otra parte, la ubicación geográfica y las promociones no mostraron un impacto estadísticamente significativo sobre las ventas, sugiriendo que la asignación promocional ha operado de manera aleatoria. Dado que el modelo cumple con la totalidad de los supuestos estadísticos de linealidad, homocedasticidad y normalidad de errores, se recomienda enfocar los recursos comerciales en optimizar la publicitaria y la política de precios sin segmentaciones regionales.
+

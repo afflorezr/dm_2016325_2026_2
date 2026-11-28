@@ -1,0 +1,9 @@
+{
+  "corrida_id": "2026-11-16T143140453498",
+  "comercios": [
+    "comercio4",
+    "comercio5",
+    "comercio6"
+  ],
+  "correspondencia": "datos/correspondencias/2026-11-16T143140453498.csv"
+}

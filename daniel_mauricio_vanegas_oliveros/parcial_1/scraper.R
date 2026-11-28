@@ -15,6 +15,7 @@
 # Listo para análisis con SQLite.
 
 # v1.1: Se agregó análisis offline del archivo.
+# v1.2: Se agregaron otras runs 
 
 # ---- 1. Paquetes ----------------------------------------------------------
 
@@ -171,7 +172,7 @@ extraer_producto <- function(nombre_sitio, consulta, timeout = 20) {
   # Guarda el HTML de la pagina consultada en la carpeta raw.
   if (!is.null(doc)) {
     dir.create("raw", showWarnings = FALSE, recursive = TRUE)
-    archivo_html <- file.path("raw", paste0(nombre_sitio, "_", consulta, ".html"))
+    archivo_html <- file.path("raw", paste0(nombre_sitio, "_", consulta, "2.html"))
     xml2::write_html(doc, archivo_html)
   }
   

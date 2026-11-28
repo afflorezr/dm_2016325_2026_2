@@ -47,28 +47,21 @@ tarjetas <- function(...) raw_html(c('<div class="metric-grid">', unlist(list(..
 # Úselas en las consultas SQL del informe (chunks {sql, connection=con}).
 # Devuelve list(ok, n_obs, n_comp, ref) con la fecha de la ejecución de referencia.
 crear_vistas <- function(con) {
-  hay <- dbExistsTable(con, "observaciones") && dbGetQuery(con, "SELECT COUNT(*) n FROM observaciones")$n > 0
-  for (v in c("v_comparables", "v_categoria")) dbExecute(con, paste0("DROP VIEW IF EXISTS ", v))
-  if (!dbExistsTable(con, "observaciones")) return(list(ok = FALSE, n_obs = 0, n_comp = 0, ref = NA_character_))
+  for (v in c("v_comparables", "v_categoria")) dbExecute(con, paste0("DROP VIEW IF EXISTS temp.", v))
+  hay <- dbExistsTable(con, "observaciones") && dbExistsTable(con, "ejecuciones") &&
+    dbGetQuery(con, "SELECT COUNT(*) n FROM observaciones")$n > 0
+  if (!hay) return(list(ok = FALSE, n_obs = 0, n_comp = 0, ref = NA_character_))
   dbExecute(con, "CREATE TEMP VIEW v_categoria AS
-    SELECT o.*, CASE WHEN LOWER(unidad_medida) = 'l' THEN contenido_num * 1000 ELSE contenido_num END AS volumen_ml
-    FROM observaciones o
-    WHERE id_ejecucion = (SELECT MAX(id_ejecucion) FROM observaciones) AND precio_cop > 0")
+    SELECT o.*, e.id_corrida, o.contenido_total_ml AS volumen_ml
+    FROM observaciones o JOIN ejecuciones e ON e.id_ejecucion = o.id_ejecucion
+    WHERE e.id_corrida = (SELECT MAX(id_corrida) FROM ejecuciones WHERE n_registros > 0) AND o.precio_cop > 0")
   dbExecute(con, "CREATE TEMP VIEW v_comparables AS
     SELECT * FROM v_categoria WHERE comparable = 1 AND id_producto_comun IS NOT NULL")
-  n_obs  <- dbGetQuery(con, "SELECT COUNT(*) n FROM v_categoria")$n
-  n_comp <- dbGetQuery(con, "SELECT COUNT(*) n FROM v_comparables")$n
-  # Fecha de la ejecución de referencia. id_ejecucion puede ser numérico (época Unix, scraper actual)
-  # o texto (versiones anteriores del scraper): se muestra como fecha si es numérico y tal cual si no.
-  ref <- NA_character_
-  if (hay) {
-    m <- dbGetQuery(con, "SELECT MAX(id_ejecucion) AS m FROM observaciones")$m
-    ref <- tryCatch(
-      if (is.numeric(m) && !is.na(m)) format(as.POSIXct(m, origin = "1970-01-01", tz = "America/Bogota"), "%Y-%m-%d %H:%M")
-      else as.character(m),
-      error = function(e) as.character(m))
-  }
-  list(ok = hay, n_obs = n_obs, n_comp = n_comp, ref = ref)
+  id <- dbGetQuery(con, "SELECT MAX(id_corrida) m FROM ejecuciones WHERE n_registros > 0")$m
+  ref <- tryCatch(format(as.POSIXct(id, format = "%Y%m%d-%H%M%S", tz = "America/Bogota"), "%Y-%m-%d %H:%M"),
+                  error = function(e) as.character(id))
+  list(ok = TRUE, n_obs = dbGetQuery(con, "SELECT COUNT(*) n FROM v_categoria")$n,
+       n_comp = dbGetQuery(con, "SELECT COUNT(*) n FROM v_comparables")$n, ref = ref)
 }
 
 # Tarjetas del resumen ejecutivo calculadas con v_categoria / v_comparables (vacías si no hay datos).
@@ -76,23 +69,22 @@ crear_vistas <- function(con) {
 tarjetas_resumen <- function(con) {
   q <- function(sql) tryCatch(dbGetQuery(con, sql), error = function(e) data.frame())
   n_com <- q("SELECT COUNT(DISTINCT comercio) n FROM v_categoria")$n
-  if (!length(n_com) || is.na(n_com) || n_com == 0) {
+  if (!length(n_com) || is.na(n_com) || n_com == 0)
     return(tarjetas(tarjeta("—", "Comercios con datos"), tarjeta("—", "Productos únicos"),
-                    tarjeta("—", "Presentaciones comparables"), tarjeta("—", "Producto comparable más económico", tono = "good"),
+                    tarjeta("—", "Presentaciones comparables"), tarjeta("—", "Comparable más económico", tono = "good"),
                     tarjeta("—", "Última actualización")))
-  }
-  n_prod <- q("SELECT COUNT(DISTINCT comercio || '|' || sku_codigo) n FROM v_categoria")$n
+  nombres <- q("SELECT DISTINCT comercio FROM v_categoria ORDER BY comercio")$comercio
+  n_prod <- q("SELECT COUNT(DISTINCT comercio || '|' || sku_comercio) n FROM v_categoria")$n
   n_pc   <- q("SELECT COUNT(DISTINCT id_producto_comun) n FROM v_comparables")$n
   bar    <- q("SELECT id_producto_comun, comercio, precio_cop FROM v_comparables ORDER BY precio_cop LIMIT 1")
-  ult    <- q("SELECT MAX(fecha_hora_consulta) f FROM observaciones")$f
+  ult    <- q("SELECT MAX(fecha_hora_consulta) f FROM v_categoria")$f
   tarjetas(
-    tarjeta(n_com, "Comercios con datos", "Éxito, Carulla y PriceSmart"),
+    tarjeta(n_com, "Comercios con datos", paste(nombres, collapse = ", ")),
     tarjeta(format(n_prod, big.mark = "."), "Productos únicos", "en la ejecución de referencia"),
     tarjeta(n_pc, "Presentaciones comparables", "marcadas con comparable = 1"),
-    if (nrow(bar)) tarjeta(fmt_cop(bar$precio_cop), "Producto comparable más económico", paste(bar$id_producto_comun, "en", bar$comercio), "good")
-      else tarjeta("—", "Producto comparable más económico", "defina comparable e id_producto_comun", "good"),
-    tarjeta(substr(ult, 1, 10), "Última actualización", paste("hora", substr(ult, 12, 19), "(Colombia)"))
-  )
+    if (nrow(bar)) tarjeta(fmt_cop(bar$precio_cop), "Comparable más económico", paste(bar$id_producto_comun, "en", bar$comercio), "good")
+    else tarjeta("—", "Comparable más económico", "ejecute comparables.R", "good"),
+    tarjeta(substr(ult, 1, 10), "Última actualización", paste("hora", substr(ult, 12, 19), "(Colombia)")))
 }
 
 # ---- Tablas interactivas (DT): búsqueda, paginación, filtros por columna ------

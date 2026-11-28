@@ -1,0 +1,17 @@
+{
+ "comercio": "larebaja",
+ "id_ejecucion": "E20261108T110310",
+ "inicio": "2026-11-08T11:03:10-05:00",
+ "fin": "2026-11-08T11:06:32-05:00",
+ "secciones": [
+  {
+   "fq": "C:/9/",
+   "nombre": "DROGUERIA",
+   "total_reportado": 4
+  }
+ ],
+ "paginas": 1,
+ "errores": [],
+ "estado": "completa",
+ "nota": "copia mínima para las pruebas: 4 productos de la página 1 de esta ejecución"
+}

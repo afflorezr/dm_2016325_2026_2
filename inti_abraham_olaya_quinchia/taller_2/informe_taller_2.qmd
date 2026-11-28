@@ -1,0 +1,296 @@
+---
+title: "Taller 2 — Comparador de precios: Afeitado y depilación"
+subtitle: "De la base SQLite del Taller 1 a una aplicación web"
+author: "Inti Abraham Olaya Quinchia"
+lang: es
+format:
+  html:
+    toc: true
+    toc-title: "Contenido"
+    code-fold: true
+    code-summary: "Ver código"
+    embed-resources: true
+jupyter: python3
+execute:
+  warning: false
+---
+
+```{python}
+#| include: false
+import sqlite3
+from contextlib import closing
+
+import pandas as pd
+import plotly.express as px
+from IPython.display import Markdown, display
+
+DB = "comparador_precios.sqlite"   # ruta relativa: ejecutar desde taller_2/
+
+
+def sql(consulta, parametros=()):
+    """Consulta parametrizada de solo lectura; devuelve un DataFrame."""
+    with closing(sqlite3.connect(f"file:{DB}?mode=ro", uri=True)) as con:
+        return pd.read_sql_query(consulta, con, params=list(parametros))
+
+
+def cop(valor):
+    return "—" if pd.isna(valor) else "$" + f"{valor:,.0f}".replace(",", ".")
+
+
+def md(texto):
+    display(Markdown(texto))
+```
+
+# 1. Introducción
+
+El comparador del Taller 1 recolectó la categoría **«Afeitado y depilación»** en comercios con venta en línea de Colombia y comparó productos presentes en tres de ellos. En este taller esa base se convierte en una aplicación **Streamlit** que consulta SQLite, se actualiza con el mismo scraper y orienta al consumidor sobre dónde comprar un producto o una canasta. Este informe documenta los datos que usa la aplicación y las conclusiones que se pueden verificar con ella. El código de la aplicación está en `app.py`, `paginas/`, `db.py`, `actualizacion.py`, `validacion.py` y `analisis.py`; las instrucciones de ejecución están en el `README.md`.
+
+# 2. Fuentes y scraping
+
+Los datos provienen **exclusivamente de `scraper.py`** (módulo del Taller 1), que consulta los servicios JSON de VTEX que usa cada sitio para mostrar su catálogo, con pausa de 1 s entre peticiones y un *User-Agent* identificable. Cada respuesta se guarda en `raw/<comercio>/<fecha>/` y cada observación queda ligada a su ejecución. La tabla siguiente muestra las ejecuciones registradas (las fallidas del Taller 1 por un error de ruta ya corregido se omiten).
+
+```{python}
+ejecuciones = sql("""
+    SELECT corrida_id AS ejecucion, substr(inicio, 1, 16) AS inicio, comercio, estado,
+           n_registros AS registros, n_esperado_sitio AS esperado_sitio,
+           substr(IFNULL(detalle, ''), 1, 70) AS detalle
+      FROM ejecuciones
+     WHERE estado <> 'fallida' OR detalle LIKE 'Fallo al consultar%'
+     ORDER BY id""")
+ejecuciones
+```
+
+```{python}
+#| output: asis
+seleccion = sql("""SELECT c.nombre FROM seleccion s JOIN comercios c ON c.id = s.comercio_id
+                    ORDER BY c.nombre""")["nombre"].tolist()
+md(f"**Comercios del análisis:** {', '.join(seleccion)}. En el Taller 1 fueron Jumbo, Locatel y Éxito; "
+   "en la ejecución del 13 de noviembre de 2026 Éxito respondió `HTTP 403`, por lo que se reemplazó por "
+   "Carulla (Grupo Éxito, catálogo casi idéntico), como permite el enunciado. Carulla quedó **parcial** "
+   "(categoría «Afeitadoras» incompleta) igual que en el Taller 1: el sitio no devolvió el resto aun "
+   "dividiendo la consulta por rangos de precio.")
+```
+
+# 3. Base SQLite y validaciones
+
+La base conserva la estructura del Taller 1 y añade: tabla `correcciones` y registro de observaciones rechazadas, estado de disponibilidad (`disponible`, `agotado`, `no observado`), contenido y unidad normalizada (mL, g, unidad), restricción de unicidad `(comercio, anuncio, fecha_consulta)`, índices para los filtros y las vistas `v_ultimo_precio`, `v_cambios_precio` y `v_comparables`. Antes de insertar, `validacion.py` (pandera) exige precio numérico mayor que cero, comercio, URL y fecha de consulta presentes, y ausencia de duplicados; lo que no la supera se guarda en `observaciones_rechazadas` con su motivo, y cada comercio se inserta dentro de una transacción. El detalle de columnas está en `diccionario_datos.md`.
+
+```{python}
+sql("""
+    SELECT 'comercios' AS tabla, COUNT(*) AS filas FROM comercios
+    UNION ALL SELECT 'ejecuciones', COUNT(*) FROM ejecuciones
+    UNION ALL SELECT 'anuncios', COUNT(*) FROM anuncios
+    UNION ALL SELECT 'productos (identificador común)', COUNT(*) FROM productos
+    UNION ALL SELECT 'observaciones', COUNT(*) FROM observaciones
+    UNION ALL SELECT 'observaciones_rechazadas', COUNT(*) FROM observaciones_rechazadas
+    UNION ALL SELECT 'correcciones', COUNT(*) FROM correcciones""")
+```
+
+# 4. Consultas SQL
+
+## 4.1 Cobertura de los productos comparables
+
+Cada ejecución completa debe contener precios de los mismos productos en los tres comercios (mínimo 8 productos, 24 observaciones). Se consideran las ejecuciones en las que `v_comparables` tiene los tres comercios; las corridas intermedias del 13 de noviembre (con solo algunos comercios) quedan fuera.
+
+```{python}
+cobertura = sql("""
+    SELECT corrida_id AS ejecucion, comercio, COUNT(*) AS observaciones,
+           COUNT(DISTINCT producto_id) AS productos
+      FROM v_comparables GROUP BY corrida_id, comercio ORDER BY corrida_id, comercio""")
+completas = sql("""
+    SELECT corrida_id FROM v_comparables GROUP BY corrida_id
+    HAVING COUNT(DISTINCT comercio) = 3 ORDER BY MIN(fecha_consulta)""")["corrida_id"].tolist()
+ANTES, DESPUES = completas[0], completas[-1]
+cobertura[cobertura["ejecucion"].isin(completas)]
+```
+
+```{python}
+#| output: asis
+n_prod = sql("SELECT COUNT(DISTINCT producto_id) AS n FROM v_comparables WHERE corrida_id = ?", [DESPUES])["n"][0]
+repetidos = sql("""SELECT comercio, producto, COUNT(*) AS anuncios FROM v_comparables
+                    WHERE corrida_id = ? GROUP BY comercio, producto_id HAVING COUNT(*) > 1""", [DESPUES])
+md(f"Ejecuciones completas comparadas: **{ANTES}** y **{DESPUES}**. Productos comparables: **{n_prod}** "
+   f"(más de los 8 exigidos, ya sin las presentaciones inconsistentes). Registros repetidos del mismo producto y comercio en la última ejecución: "
+   f"**{len(repetidos)}** (un producto de Carulla tiene dos anuncios, uno de vendedor externo; la canasta usa el más barato).")
+```
+
+## 4.2 Presentaciones cuyo contenido no coincide entre comercios
+
+Un mismo identificador común no garantiza la misma presentación: si el contenido o la unidad extraídos del título difieren entre comercios, comparar precios mezclaría presentaciones distintas. Al asignar la correspondencia, `scraper.asignar_correspondencia` marca esos productos como **no comparables** y deja constancia en la tabla `correcciones` (no se borra ninguna observación). Quedan fuera de la vista `v_comparables` y de todos los análisis siguientes.
+
+```{python}
+inconsistentes = sql("SELECT id_registro AS producto_id, valor_anterior, valor_nuevo, motivo FROM correcciones")
+inconsistentes
+```
+
+```{python}
+comp = sql("SELECT * FROM v_comparables WHERE corrida_id IN (?, ?)", [ANTES, DESPUES])
+base = comp[~comp["producto_id"].isin(inconsistentes["producto_id"]) & comp["precio"].notna()].copy()
+comercios = sorted(base["comercio"].unique())
+COLORES = dict(zip(comercios, px.colors.qualitative.Set2))
+
+
+def precios_por_producto(corrida):
+    """Un precio por producto y comercio (el más barato si hay dos anuncios); solo productos con los 3 precios."""
+    d = base[base["corrida_id"] == corrida]
+    w = (d.groupby(["producto", "comercio"])["precio"].min().unstack("comercio")).dropna()
+    w["minimo"], w["maximo"] = w[comercios].min(axis=1), w[comercios].max(axis=1)
+    w["ahorro_cop"] = w["maximo"] - w["minimo"]
+    w["ahorro_pct"] = 100 * w["ahorro_cop"] / w["maximo"]
+    w["mas_barato"] = [" / ".join(c for c in comercios if r[c] == r["minimo"]) for _, r in w.iterrows()]
+    return w
+
+
+P_ANTES, P_DESPUES = precios_por_producto(ANTES), precios_por_producto(DESPUES)
+md(f"Productos analizados con precio en los tres comercios: **{len(P_DESPUES)}** (última ejecución) y "
+   f"**{len(P_ANTES)}** (primera). Corregidos como no comparables por presentación distinta: **{len(inconsistentes)}**.")
+```
+
+## 4.3 Precio mínimo, máximo y ahorro por presentación
+
+Para cada presentación comparable: `Ahorro (COP) = Pmax − Pmin` y `Ahorro (%) = 100 · (Pmax − Pmin) / Pmax`. Los empates en el mínimo se listan todos.
+
+```{python}
+top = P_DESPUES.sort_values("ahorro_pct", ascending=False).head(10).reset_index()
+top[["producto", *comercios, "ahorro_cop", "ahorro_pct", "mas_barato"]].round(1)
+```
+
+## 4.4 Precio por unidad de contenido
+
+El precio por unidad se calcula con la unidad normalizada y **mL, g y unidad nunca se mezclan**: cada unidad tiene su propio ranking.
+
+```{python}
+unitario = base[(base["corrida_id"] == DESPUES) & base["precio_unitario"].notna()]
+for unidad, grupo in unitario.groupby("unidad_normalizada"):
+    md(f"**Los 5 precios más bajos por {unidad}** (COP por {unidad})")
+    display(grupo.nsmallest(5, "precio_unitario")[["comercio", "producto", "contenido_normalizado", "precio",
+                                                    "precio_unitario"]].round(2).reset_index(drop=True))
+```
+
+## 4.5 Cambios de precio entre ejecuciones
+
+Se compara el mismo anuncio en el mismo comercio entre la primera y la última ejecución completa.
+
+```{python}
+a = base[base["corrida_id"] == ANTES][["anuncio_id", "comercio", "precio"]]
+b = base[base["corrida_id"] == DESPUES][["anuncio_id", "precio"]]
+cambios = a.merge(b, on="anuncio_id", suffixes=("_antes", "_despues"))
+cambios["dif_pct"] = 100 * (cambios["precio_despues"] - cambios["precio_antes"]) / cambios["precio_antes"]
+cambios["sentido"] = pd.cut(cambios["dif_pct"], [-1e9, -1e-9, 1e-9, 1e9], labels=["bajó", "igual", "subió"])
+resumen_cambios = (cambios.groupby(["comercio", "sentido"], observed=True)
+                   .agg(anuncios=("anuncio_id", "count"), variacion_media_pct=("dif_pct", "mean")).round(1))
+resumen_cambios
+```
+
+## 4.6 Canasta
+
+Con exactamente los mismos productos y una misma ejecución: costo de comprar todo en un solo comercio frente a la **canasta ideal** (cada producto donde es más barato).
+
+```{python}
+def canasta(w):
+    unico = w[comercios].sum()
+    ideal = w["minimo"].sum()
+    return unico, ideal
+
+
+unico, ideal = canasta(P_DESPUES)
+mejor = unico.idxmin()
+pd.DataFrame({"Comprando todo en": [*unico.index, "Canasta ideal"],
+              "Costo (COP)": [*unico.round(0), round(ideal)]})
+```
+
+## 4.7 Datos faltantes o inconsistentes
+
+```{python}
+faltantes = sql("""SELECT COUNT(*) AS observaciones, SUM(precio_cop IS NULL) AS sin_precio,
+                          SUM(disponibilidad = 'agotado') AS agotadas FROM observaciones""")
+contenido = sql("""SELECT COUNT(*) AS anuncios, SUM(contenido_normalizado IS NULL) AS sin_contenido
+                     FROM anuncios WHERE excluido = 0""")
+pd.concat([faltantes, contenido], axis=1)
+```
+
+Los productos agotados quedan con precio ausente (`NULL`), nunca en 0. Los anuncios sin contenido identificable en el título no entran al precio por unidad.
+
+# 5. Visualizaciones
+
+```{python}
+d = base[base["corrida_id"] == DESPUES]
+fig = px.box(d, x="comercio", y="precio", color="comercio", color_discrete_map=COLORES, points="all",
+             hover_name="producto", labels={"precio": "Precio (COP)", "comercio": ""},
+             title=f"Distribución de precios de los productos comparables por comercio ({DESPUES})")
+fig.update_layout(showlegend=False)
+fig.show()
+```
+
+*Interpretación.* Compara el surtido comparable de cada comercio, no su surtido completo; la mediana más baja indica dónde cuestan menos estos productos, no que el comercio sea más barato en general.
+
+```{python}
+graf = top.sort_values("ahorro_pct")
+fig = px.bar(graf, x="ahorro_pct", y="producto", orientation="h", color="mas_barato",
+             color_discrete_map=COLORES, labels={"ahorro_pct": "Ahorro (%)", "producto": "", "mas_barato": "Más barato en"},
+             title="Mayores oportunidades de ahorro entre comercios (última ejecución)")
+fig.show()
+```
+
+*Interpretación.* Un ahorro porcentual alto puede venir de una promoción vigente; el precio es el de la captura y no es permanente.
+
+```{python}
+mayor = P_DESPUES["ahorro_pct"].idxmax()
+evol = base[base["producto"] == mayor]
+fig = px.line(evol, x="fecha_consulta", y="precio", color="comercio", markers=True, color_discrete_map=COLORES,
+              labels={"precio": "Precio (COP)", "fecha_consulta": "Fecha de consulta"},
+              title=f"Evolución del precio: {mayor}")
+fig.show()
+```
+
+*Interpretación.* Con dos ejecuciones completas solo hay dos puntos por comercio; sirve para ver si la diferencia entre comercios se mantiene o se invierte.
+
+```{python}
+promo = (d.groupby("comercio")["en_promocion"].agg(["sum", "count"]).reset_index()
+         .rename(columns={"sum": "Con promoción", "count": "Total"}))
+promo["Sin promoción"] = promo["Total"] - promo["Con promoción"]
+fig = px.bar(promo.melt(id_vars="comercio", value_vars=["Con promoción", "Sin promoción"],
+                        var_name="estado", value_name="productos"),
+             x="comercio", y="productos", color="estado", barmode="stack",
+             color_discrete_map={"Con promoción": "#E4572E", "Sin promoción": "#9AA5B1"},
+             labels={"comercio": "", "productos": "Productos comparables"},
+             title="Productos comparables con y sin promoción (última ejecución)")
+fig.show()
+```
+
+*Interpretación.* Muestra qué comercios tienen precios que pueden ser temporales; conviene leerlo junto con los gráficos anteriores.
+
+# 6. Limitaciones y conclusiones para el consumidor
+
+```{python}
+#| output: asis
+v = P_DESPUES["mas_barato"].str.split(" / ").explode().value_counts()
+va = P_ANTES["mas_barato"].str.split(" / ").explode().value_counts()
+pa = P_ANTES, P_DESPUES
+unico_antes, ideal_antes = canasta(P_ANTES)
+prom = d.groupby("comercio")["en_promocion"].sum().to_dict()
+ahorro_ideal = unico.min() - ideal
+md(f"""
+1. **Ningún comercio es el más barato en todas las fechas.** En {DESPUES} el menor precio estuvo en
+   {', '.join(f'{c} ({n})' for c, n in v.items())} de {len(P_DESPUES)} productos (los empates cuentan para todos);
+   en {ANTES}, en {', '.join(f'{c} ({n})' for c, n in va.items())} de {len(P_ANTES)}. Comprar toda la canasta en
+   {mejor} costaba {cop(unico.min())} en {DESPUES}; en {ANTES} lo más barato para esa canasta era
+   {unico_antes.idxmin()} con {cop(unico_antes.min())}.
+2. **Las promociones explican parte de la diferencia.** Productos comparables en promoción en {DESPUES}:
+   {', '.join(f'{c} ({int(n)})' for c, n in prom.items())}. Son precios de la captura, no permanentes.
+3. **Elegir bien cada producto ahorra más que armar la canasta.** El ahorro mediano de comprar cada producto en el
+   comercio más barato frente al más caro fue {P_DESPUES['ahorro_pct'].median():.1f} %
+   ({cop(P_DESPUES['ahorro_cop'].median())}); la canasta ideal cuesta {cop(ideal)}, solo {cop(ahorro_ideal)}
+   ({100 * ahorro_ideal / unico.min():.1f} %) menos que comprar todo en {mejor}. Un envase más grande puede tener
+   menor precio por unidad pero exige un desembolso mayor.
+
+**Limitaciones.** Los precios representan el momento de la captura; no incluyen envío, mínimos de compra ni condiciones
+de las promociones. Éxito no pudo consultarse en la última ejecución y Carulla quedó parcial. Solo hay dos ejecuciones
+completas, por lo que los cambios de precio son una comparación de dos fechas, no una tendencia. No se usan promedios de
+surtidos distintos para concluir que un comercio es globalmente más barato.
+""")
+```
+
+# 7. Autoría y uso de inteligencia artificial
+
+La declaración completa de herramientas de IA, de las partes del trabajo en que se usaron y de cómo se verificó el resultado está en la sección «Declaración de uso de IA» del `README.md`.

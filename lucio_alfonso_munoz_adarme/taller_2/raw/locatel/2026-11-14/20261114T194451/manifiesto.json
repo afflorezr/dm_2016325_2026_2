@@ -1,0 +1,18 @@
+{
+  "comercio": "Locatel",
+  "id_ejecucion": "20261114T194451",
+  "carpeta": "raw/locatel/2026-11-14/20261114T194451",
+  "fecha_consulta": "2026-11-14T19:47:18-05:00",
+  "fecha_fin": "2026-11-14T19:48:01-05:00",
+  "fuente": "https://www.locatelcolombia.com/api/catalog_system/pub/products/search",
+  "region_bogota": "v2.2AB6F1385C28ED46EB5209B972FF12AC",
+  "filtros": [
+    "C:/6/41/",
+    "C:/6/39/245/",
+    "C:/6/39/241/"
+  ],
+  "total_sitio": 423,
+  "productos_unicos": 420,
+  "filas": 420,
+  "estado": "parcial"
+}

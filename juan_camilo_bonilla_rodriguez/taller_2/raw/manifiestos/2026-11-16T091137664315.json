@@ -1,0 +1,10 @@
+{
+  "corrida_id": "2026-11-16T091137664315",
+  "comercios": [
+    "comercio1",
+    "comercio2",
+    "comercio3"
+  ],
+  "correspondencia": "datos/correspondencias/inicial.csv",
+  "nota": "Captura original; conservada sin modificar precios ni fechas"
+}

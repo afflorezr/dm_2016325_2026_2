@@ -1,0 +1,32 @@
+{
+  "ejecucion_id": "EXEC_20261116_025839_e80b52_ÉXITO",
+  "fecha_hora_captura": "2026-11-16T03:04:48-05:00",
+  "total_sitio": 5603,
+  "total_obtenido_bruto": 5603,
+  "subcategorias": {
+    "jabones-detergentes-y-limpiadores": {
+      "url": "https://exitocol.vtexcommercestable.com.br/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/jabones-detergentes-y-limpiadores",
+      "total_sitio": 2002,
+      "items_obtenidos": 2002,
+      "timestamp": "2026-11-16T03:01:20-05:00"
+    },
+    "lavalozas-y-desengrasante": {
+      "url": "https://exitocol.vtexcommercestable.com.br/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/lavalozas-y-desengrasante",
+      "total_sitio": 577,
+      "items_obtenidos": 577,
+      "timestamp": "2026-11-16T03:02:39-05:00"
+    },
+    "ambientadores-e-insecticidas": {
+      "url": "https://exitocol.vtexcommercestable.com.br/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/ambientadores-e-insecticidas",
+      "total_sitio": 1195,
+      "items_obtenidos": 1195,
+      "timestamp": "2026-11-16T03:02:52-05:00"
+    },
+    "implementos-para-la-limpieza": {
+      "url": "https://exitocol.vtexcommercestable.com.br/api/catalog_system/pub/products/search/mercado/aseo-del-hogar/implementos-para-la-limpieza",
+      "total_sitio": 1829,
+      "items_obtenidos": 1829,
+      "timestamp": "2026-11-16T03:03:17-05:00"
+    }
+  }
+}

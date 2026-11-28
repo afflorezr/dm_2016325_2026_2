@@ -176,8 +176,5 @@ cerveza = c("chicle", "gomitas", "mentas", "frutos_secos","conserva", "cereales"
 
 guardado = saver_cervezas(cerveza)
 
-View(guardado)
-
-guardado = guardado[-35,]
 
 write.csv(guardado, file = "~/raw/productos.csv")

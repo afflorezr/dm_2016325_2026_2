@@ -1,0 +1,8 @@
+{
+  "url": "https://www.larebajavirtual.com/api/catalog_system/pub/products/search?fq=C%3A%2F5%2F28%2F168%2F&_from=0&_to=49&O=OrderByNameASC",
+  "fecha_hora": "2026-11-05T18:13:44-05:00",
+  "status": 200,
+  "resources": "0-49/48",
+  "content_type": "application/json; charset=utf-8",
+  "sha256": "8eaaacc2a37c5bfd017e1b2f5b9b1a8fe7e79a265581e939dbf35e2d60736471"
+}

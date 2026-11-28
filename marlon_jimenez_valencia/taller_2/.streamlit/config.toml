@@ -1,0 +1,23 @@
+# Estilo propio de la aplicación: papel cálido, verde pino y barra lateral oscura.
+# Streamlit lo lee porque está en la carpeta .streamlit junto a app.py.
+
+[theme]
+base = "light"
+primaryColor = "#2e6b5e"              # verde pino: botones, deslizadores y enlaces
+backgroundColor = "#fbf8f3"           # papel cálido
+secondaryBackgroundColor = "#f1ebe2"  # arena: cajas y campos
+textColor = "#26221d"
+borderColor = "#e3d9cb"
+linkColor = "#2e6b5e"
+font = "Nunito Sans:https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&display=swap, sans-serif"
+headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:wght@600&display=swap, serif"
+baseRadius = "0.3rem"
+showWidgetBorder = true
+metricValueFontSize = "1.9rem"        # para que "8 nov 2026" quepa en el indicador
+
+[theme.sidebar]
+backgroundColor = "#1f4a42"
+secondaryBackgroundColor = "#2b5d54"
+textColor = "#f3eee4"
+primaryColor = "#a8641a"              # bronce: el texto blanco de las etiquetas se lee (4,7:1)
+borderColor = "#3b6d63"

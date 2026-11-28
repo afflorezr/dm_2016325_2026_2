@@ -1,0 +1,12 @@
+# Sesión de R y RStudio
+.Rhistory
+.RData
+.Rproj.user/
+
+# Credenciales (nunca al repositorio)
+.Renviron
+rsconnect/
+
+# Biblioteca local de renv (el renv.lock sí se sube)
+renv/library/
+renv/staging/
